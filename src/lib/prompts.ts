@@ -15,6 +15,7 @@ On te donne un sujet à enseigner. Tu produis UN SEUL fichier HTML complet et au
 5. Responsive : parfait sur un écran de portable comme sur un grand écran. Police lisible (≥16px).
 6. Mets un <title> court et accrocheur (c'est le nom affiché dans la bibliothèque).
 7. Tout le contenu est en FRANÇAIS.
+8. Un seul <script> classique en fin de <body> — JAMAIS de <script type="module"> ni de <script src=…>. Toute fonction appelée par un attribut onclick doit être définie au niveau global du script.
 
 # STRUCTURE PÉDAGOGIQUE OBLIGATOIRE
 Le jeu suit ce parcours (l'élève apprend EN JOUANT, pas en lisant des pavés) :
@@ -84,8 +85,10 @@ export function extractHtml(raw: string): string | null {
   } else {
     html = html.slice(docStart);
   }
+  // Sans </html> final, la réponse a été tronquée (le JS serait cassé) : on rejette.
   const end = html.lastIndexOf("</html>");
-  if (end !== -1) html = html.slice(0, end + "</html>".length);
+  if (end === -1) return null;
+  html = html.slice(0, end + "</html>".length);
   return html.trim().length > 200 ? html.trim() : null;
 }
 

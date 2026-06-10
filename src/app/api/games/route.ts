@@ -9,6 +9,7 @@ export async function GET() {
   const games = db
     .prepare(
       `SELECT g.id, g.topic, g.difficulty, g.title, g.version, g.plays,
+              g.is_public, g.public_slug,
               g.created_at, g.updated_at, g.user_id, u.username AS author,
               EXISTS(SELECT 1 FROM scores s WHERE s.game_id = g.id AND s.user_id = ?) AS completed_by_me,
               (SELECT COUNT(DISTINCT s.user_id) FROM scores s WHERE s.game_id = g.id) AS finishers

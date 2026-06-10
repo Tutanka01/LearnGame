@@ -13,6 +13,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const game = db
     .prepare(
       `SELECT g.id, g.topic, g.difficulty, g.title, g.version, g.plays,
+              g.is_public, g.public_slug,
               g.created_at, g.updated_at, g.user_id, u.username AS author
        FROM games g JOIN users u ON u.id = g.user_id WHERE g.id = ?`
     )

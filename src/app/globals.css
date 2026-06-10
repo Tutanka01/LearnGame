@@ -1,26 +1,154 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #0b0d14;
-  --color-surface: #131722;
-  --color-surface-2: #1a2030;
-  --color-border: #262e42;
-  --color-accent: #7c6cff;
-  --color-accent-2: #3dd6c3;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --color-bg: #0a0c13;
+  --color-surface: #11141e;
+  --color-surface-2: #181d2b;
+  --color-border: #242b3d;
+  --color-border-strong: #344058;
+  --color-accent: #8b7cff;
+  --color-accent-strong: #a395ff;
+  --color-accent-2: #2dd4bf;
+  --color-ink: #eef0f8;
+  --color-ink-dim: #98a0b8;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 html,
 body {
   background: var(--color-bg);
-  color: #e8eaf2;
+  color: var(--color-ink);
   min-height: 100%;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: rgba(124, 108, 255, 0.4);
+  background: rgba(139, 124, 255, 0.4);
 }
 
+/* --- Accessibilité : anneau de focus visible au clavier uniquement --- */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* --- Fond ambiant : double halo + grain subtil, fixe au scroll --- */
+.app-bg {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(139, 124, 255, 0.13), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 110%, rgba(45, 212, 191, 0.07), transparent 60%),
+    var(--color-bg);
+  background-attachment: fixed;
+}
+
+/* --- Boutons : trois variantes cohérentes dans toute l'app --- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid transparent;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease,
+    box-shadow 0.2s ease;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:active {
+  transform: scale(0.97);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--color-accent), #6d5bf5);
+  color: white;
+  font-weight: 600;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.15) inset,
+    0 4px 16px rgba(139, 124, 255, 0.3);
+}
+.btn-primary:hover:not(:disabled) {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.2) inset,
+    0 6px 24px rgba(139, 124, 255, 0.45);
+  filter: brightness(1.08);
+}
+
+.btn-ghost {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-ink-dim);
+}
+.btn-ghost:hover:not(:disabled) {
+  color: var(--color-ink);
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-2);
+}
+
+.btn-danger {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: #f87171;
+}
+.btn-danger:hover:not(:disabled) {
+  border-color: rgba(248, 113, 113, 0.5);
+  background: rgba(127, 29, 29, 0.25);
+}
+
+/* --- Cartes --- */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+}
+
+.card-interactive {
+  transition:
+    transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 0.2s ease,
+    box-shadow 0.25s ease;
+}
+.card-interactive:hover {
+  transform: translateY(-3px);
+  border-color: rgba(139, 124, 255, 0.55);
+  box-shadow:
+    0 12px 32px -8px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(139, 124, 255, 0.15);
+}
+
+/* --- Champs de saisie --- */
+.field {
+  width: 100%;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  padding: 0.625rem 1rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.field::placeholder {
+  color: #5b6478;
+}
+.field:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(139, 124, 255, 0.18);
+}
+
+/* --- Animations --- */
 @keyframes float-in {
   from {
     opacity: 0;
@@ -35,26 +163,88 @@ body {
 @keyframes pulse-glow {
   0%,
   100% {
-    box-shadow: 0 0 24px rgba(124, 108, 255, 0.25);
+    box-shadow: 0 0 24px rgba(139, 124, 255, 0.25);
   }
   50% {
-    box-shadow: 0 0 48px rgba(124, 108, 255, 0.55);
+    box-shadow: 0 0 48px rgba(139, 124, 255, 0.55);
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
   }
 }
 
 .float-in {
-  animation: float-in 0.45s ease-out both;
+  animation: float-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .pulse-glow {
   animation: pulse-glow 2.2s ease-in-out infinite;
 }
 
-/* Barre de défilement discrète pour le flux de code */
-.code-stream::-webkit-scrollbar {
+.toast-in {
+  animation: toast-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Apparition en cascade des cartes de la bibliothèque */
+.stagger > * {
+  animation: float-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 40ms; }
+.stagger > *:nth-child(3) { animation-delay: 80ms; }
+.stagger > *:nth-child(4) { animation-delay: 120ms; }
+.stagger > *:nth-child(5) { animation-delay: 160ms; }
+.stagger > *:nth-child(6) { animation-delay: 200ms; }
+.stagger > *:nth-child(n + 7) { animation-delay: 240ms; }
+
+/* Squelettes de chargement */
+.skeleton {
+  background: linear-gradient(
+    100deg,
+    var(--color-surface) 40%,
+    var(--color-surface-2) 50%,
+    var(--color-surface) 60%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+  border-radius: 1rem;
+}
+
+/* Respecte la préférence "réduire les animations" */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* --- Barres de défilement discrètes --- */
+.code-stream::-webkit-scrollbar,
+.thin-scroll::-webkit-scrollbar {
   width: 6px;
 }
-.code-stream::-webkit-scrollbar-thumb {
+.code-stream::-webkit-scrollbar-thumb,
+.thin-scroll::-webkit-scrollbar-thumb {
   background: #2c3550;
   border-radius: 3px;
 }

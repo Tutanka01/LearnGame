@@ -48,6 +48,20 @@ function createDb(): DatabaseSync {
     CREATE INDEX IF NOT EXISTS idx_scores_game ON scores(game_id);
     CREATE INDEX IF NOT EXISTS idx_scores_user ON scores(user_id);
   `);
+
+  // Migrations additives : les colonnes de partage public n'existaient pas en v1.
+  const gameCols = db
+    .prepare("PRAGMA table_info(games)")
+    .all()
+    .map((c) => (c as { name: string }).name);
+  if (!gameCols.includes("is_public")) {
+    db.exec("ALTER TABLE games ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0;");
+  }
+  if (!gameCols.includes("public_slug")) {
+    db.exec("ALTER TABLE games ADD COLUMN public_slug TEXT;");
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_games_slug ON games(public_slug);");
+  }
+
   return db;
 }
 
@@ -77,6 +91,8 @@ export interface Game {
   html: string;
   version: number;
   plays: number;
+  is_public: number;
+  public_slug: string | null;
   created_at: string;
   updated_at: string;
   author?: string;

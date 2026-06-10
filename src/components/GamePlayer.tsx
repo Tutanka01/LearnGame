@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import GenerationOverlay from "./GenerationOverlay";
+import ShareModal from "./ShareModal";
 import type { Game } from "@/lib/db";
 
 interface ScoreRow {
@@ -28,9 +29,17 @@ export default function GamePlayer({
   const [improving, setImproving] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [boardOpen, setBoardOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [scores, setScores] = useState<ScoreRow[]>([]);
   const [myId, setMyId] = useState<number | null>(null);
   const [toast, setToast] = useState("");
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((msg: string, ms = 4000) => {
+    setToast(msg);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(""), ms);
+  }, []);
 
   const loadScores = useCallback(async () => {
     const res = await fetch(`/api/games/${game.id}/scores`);
@@ -61,14 +70,13 @@ export default function GamePlayer({
         body: JSON.stringify({ score, maxScore }),
       });
       if (res.ok) {
-        setToast(`🎉 Jeu terminé ! Score enregistré : ${score}/${maxScore}`);
-        setTimeout(() => setToast(""), 5000);
+        showToast(`🎉 Jeu terminé ! Score enregistré : ${score}/${maxScore}`, 5000);
         loadScores();
       }
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [game.id, loadScores]);
+  }, [game.id, loadScores, showToast]);
 
   function fullscreen() {
     iframeRef.current?.requestFullscreen?.();
@@ -86,12 +94,6 @@ export default function GamePlayer({
     URL.revokeObjectURL(url);
   }
 
-  async function copyLink() {
-    await navigator.clipboard.writeText(window.location.href);
-    setToast("🔗 Lien copié !");
-    setTimeout(() => setToast(""), 2500);
-  }
-
   async function deleteGame() {
     if (!confirm("Supprimer définitivement ce jeu ?")) return;
     const res = await fetch(`/api/games/${game.id}`, { method: "DELETE" });
@@ -102,7 +104,7 @@ export default function GamePlayer({
   }
 
   return (
-    <main className="h-screen flex flex-col bg-[var(--color-bg)]">
+    <main className="h-screen flex flex-col">
       {improving && (
         <GenerationOverlay
           request={{ gameId: game.id, feedback }}
@@ -118,74 +120,88 @@ export default function GamePlayer({
       )}
 
       {toast && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-accent)]/50 shadow-2xl text-sm font-medium float-in">
-          {toast}
+        <div className="fixed top-20 left-1/2 z-50 toast-in">
+          <div className="card px-5 py-3 border-[var(--color-accent)]/50 shadow-2xl text-sm font-medium whitespace-nowrap">
+            {toast}
+          </div>
         </div>
       )}
 
-      <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 backdrop-blur">
+      {shareOpen && (
+        <ShareModal
+          gameId={game.id}
+          title={game.title || game.topic}
+          isOwner={isOwner}
+          initialPublic={Boolean(game.is_public)}
+          initialSlug={game.public_slug}
+          onClose={() => setShareOpen(false)}
+          onToast={showToast}
+        />
+      )}
+
+      <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 backdrop-blur-md">
         <div className="px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <Link
-              href="/"
-              className="shrink-0 px-3 py-1.5 rounded-lg text-sm text-slate-300 hover:text-white bg-[var(--color-bg)] border border-[var(--color-border)] transition-colors"
-            >
-              ← Retour
+            <Link href="/" className="btn btn-ghost shrink-0" aria-label="Retour à la bibliothèque">
+              ←<span className="hidden sm:inline"> Retour</span>
             </Link>
             <div className="min-w-0">
-              <h1 className="font-semibold truncate text-sm sm:text-base">
-                {game.title || game.topic}
+              <h1 className="font-semibold truncate text-sm sm:text-base flex items-center gap-2">
+                <span className="truncate">{game.title || game.topic}</span>
+                {Boolean(game.is_public) && (
+                  <span
+                    className="shrink-0 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-[10px] font-medium"
+                    title="Ce jeu est public : jouable sans compte via son lien"
+                  >
+                    🌐 Public
+                  </span>
+                )}
               </h1>
-              <p className="text-[11px] text-slate-500 truncate">
+              <p className="text-[11px] text-[var(--color-ink-dim)] truncate">
                 {game.topic} · <span className="capitalize">{game.difficulty}</span> · par{" "}
                 {game.author}
                 {game.version > 1 && ` · v${game.version}`}
               </p>
             </div>
           </div>
+
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => setBoardOpen((o) => !o)}
-              className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+              className={`btn ${
                 boardOpen
                   ? "bg-amber-400/15 text-amber-300 border-amber-400/40"
-                  : "text-slate-300 hover:text-white bg-[var(--color-bg)] border-[var(--color-border)]"
+                  : "btn-ghost"
               }`}
+              aria-pressed={boardOpen}
             >
-              🏆 Classement
+              🏆<span className="hidden md:inline"> Classement</span>
             </button>
             <button
               onClick={() => setImproveOpen(true)}
-              className="px-3 py-1.5 rounded-lg text-sm bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[var(--color-accent)]/40 hover:bg-[var(--color-accent)]/25 transition-colors"
+              className="btn bg-[var(--color-accent)]/15 text-[var(--color-accent-strong)] border-[var(--color-accent)]/40 hover:bg-[var(--color-accent)]/25"
             >
-              🪄 Améliorer
+              🪄<span className="hidden md:inline"> Améliorer</span>
+            </button>
+            <button onClick={() => setShareOpen(true)} className="btn btn-ghost">
+              🌐<span className="hidden md:inline"> Partager</span>
             </button>
             <button
               onClick={fullscreen}
-              className="hidden sm:block px-3 py-1.5 rounded-lg text-sm text-slate-300 hover:text-white bg-[var(--color-bg)] border border-[var(--color-border)] transition-colors"
+              className="btn btn-ghost hidden sm:inline-flex"
+              title="Plein écran"
             >
-              ⛶ Plein écran
-            </button>
-            <button
-              onClick={copyLink}
-              className="hidden sm:block px-3 py-1.5 rounded-lg text-sm text-slate-300 hover:text-white bg-[var(--color-bg)] border border-[var(--color-border)] transition-colors"
-              title="Copier le lien du jeu"
-            >
-              🔗
+              ⛶
             </button>
             <button
               onClick={downloadHtml}
-              className="hidden sm:block px-3 py-1.5 rounded-lg text-sm text-slate-300 hover:text-white bg-[var(--color-bg)] border border-[var(--color-border)] transition-colors"
+              className="btn btn-ghost hidden sm:inline-flex"
               title="Télécharger le jeu (fichier HTML autonome)"
             >
               ⬇
             </button>
             {isOwner && (
-              <button
-                onClick={deleteGame}
-                className="px-3 py-1.5 rounded-lg text-sm text-red-400 hover:text-red-300 bg-[var(--color-bg)] border border-[var(--color-border)] transition-colors"
-                title="Supprimer ce jeu"
-              >
+              <button onClick={deleteGame} className="btn btn-danger" title="Supprimer ce jeu">
                 🗑
               </button>
             )}
@@ -204,11 +220,11 @@ export default function GamePlayer({
         />
 
         {boardOpen && (
-          <aside className="w-72 shrink-0 border-l border-[var(--color-border)] bg-[var(--color-surface)] overflow-y-auto">
+          <aside className="w-72 shrink-0 border-l border-[var(--color-border)] bg-[var(--color-surface)] overflow-y-auto thin-scroll">
             <div className="p-4">
               <h2 className="font-semibold text-sm mb-3">🏆 Classement</h2>
               {scores.length === 0 ? (
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-[var(--color-ink-dim)]">
                   Personne n&apos;a encore terminé ce jeu. Sois le premier ou la première !
                 </p>
               ) : (
@@ -230,9 +246,9 @@ export default function GamePlayer({
                         </span>
                         <span className="flex-1 truncate">
                           {s.username}
-                          {isMe && <span className="text-slate-400"> (toi)</span>}
+                          {isMe && <span className="text-[var(--color-ink-dim)]"> (toi)</span>}
                         </span>
-                        <span className="text-xs text-slate-400 shrink-0">
+                        <span className="text-xs text-[var(--color-ink-dim)] shrink-0">
                           {s.score}/{s.max_score}{" "}
                           <span className="text-[var(--color-accent-2)]">({pct}%)</span>
                         </span>
@@ -241,7 +257,7 @@ export default function GamePlayer({
                   })}
                 </ol>
               )}
-              <p className="text-[11px] text-slate-500 mt-4">
+              <p className="text-[11px] text-[var(--color-ink-dim)] mt-4">
                 Termine le jeu pour entrer au classement. Seul ton meilleur essai compte.
               </p>
             </div>
@@ -253,13 +269,12 @@ export default function GamePlayer({
         <div
           className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm flex items-center justify-center p-6"
           onClick={() => setImproveOpen(false)}
+          role="dialog"
+          aria-modal="true"
         >
-          <div
-            className="w-full max-w-lg bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6 float-in"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="w-full max-w-lg card p-6 float-in" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold mb-1">🪄 Améliorer ce jeu</h2>
-            <p className="text-sm text-slate-400 mb-4">
+            <p className="text-sm text-[var(--color-ink-dim)] mb-4">
               Décris ce que tu veux changer : ajouter un niveau, simplifier, corriger quelque chose,
               changer la mécanique…
             </p>
@@ -270,19 +285,19 @@ export default function GamePlayer({
               maxLength={1000}
               autoFocus
               placeholder='Ex : "Ajoute un niveau sur les ports TCP célèbres" ou "Le niveau 2 est trop dur"'
-              className="w-full px-4 py-3 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] focus:border-[var(--color-accent)] focus:outline-none resize-none transition-colors"
+              className="field resize-none"
             />
             <div className="flex justify-end gap-2 mt-4">
               <button
                 onClick={() => setImproveOpen(false)}
-                className="px-4 py-2 rounded-xl text-sm text-slate-300 hover:text-white transition-colors"
+                className="btn text-[var(--color-ink-dim)] hover:text-white"
               >
                 Annuler
               </button>
               <button
                 onClick={() => feedback.trim().length >= 5 && setImproving(true)}
                 disabled={feedback.trim().length < 5}
-                className="px-5 py-2 rounded-xl bg-[var(--color-accent)] hover:bg-[#8d7fff] disabled:opacity-40 text-sm font-semibold transition-colors"
+                className="btn btn-primary"
               >
                 Lancer l&apos;amélioration
               </button>

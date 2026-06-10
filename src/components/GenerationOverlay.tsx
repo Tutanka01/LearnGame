@@ -131,19 +131,16 @@ export default function GenerationOverlay({
     <div className="fixed inset-0 z-50 bg-[var(--color-bg)]/95 backdrop-blur flex items-center justify-center p-6">
       <div className="w-full max-w-2xl float-in">
         {error ? (
-          <div className="bg-[var(--color-surface)] border border-red-900/60 rounded-2xl p-8 text-center">
+          <div className="card border-red-900/60 p-8 text-center">
             <div className="text-4xl mb-4">😕</div>
             <h2 className="text-xl font-semibold mb-2">La génération a échoué</h2>
-            <p className="text-slate-400 text-sm mb-6 whitespace-pre-wrap">{error}</p>
-            <button
-              onClick={onCancel}
-              className="px-6 py-2.5 rounded-xl bg-[var(--color-accent)] hover:bg-[#8d7fff] font-medium transition-colors"
-            >
+            <p className="text-[var(--color-ink-dim)] text-sm mb-6 whitespace-pre-wrap">{error}</p>
+            <button onClick={onCancel} className="btn btn-primary px-6 py-2.5">
               Retour
             </button>
           </div>
         ) : (
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-8 pulse-glow">
+          <div className="card p-8 pulse-glow">
             <div className="flex items-center gap-4 mb-5">
               <div className="text-4xl animate-bounce">🎮</div>
               <div className="min-w-0">

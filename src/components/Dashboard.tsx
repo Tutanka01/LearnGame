@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import GenerationOverlay, { GenerationRequest } from "./GenerationOverlay";
 
@@ -11,6 +11,8 @@ interface GameSummary {
   title: string;
   version: number;
   plays: number;
+  is_public: number;
+  public_slug: string | null;
   created_at: string;
   updated_at: string;
   user_id: number;
@@ -68,6 +70,7 @@ export default function Dashboard({ username }: { username: string }) {
   const [sort, setSort] = useState<"récents" | "populaires">("récents");
   const [search, setSearch] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const loadGames = useCallback(async () => {
     const res = await fetch("/api/games");
@@ -83,6 +86,19 @@ export default function Dashboard({ username }: { username: string }) {
   useEffect(() => {
     loadGames();
   }, [loadGames]);
+
+  // Raccourci clavier : "/" place le curseur dans la recherche.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey) return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+      e.preventDefault();
+      searchRef.current?.focus();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   function generate(t?: string) {
     const finalTopic = (t ?? topic).trim();
@@ -122,7 +138,7 @@ export default function Dashboard({ username }: { username: string }) {
   }, [games, filter, sort, search, userId]);
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(ellipse_at_top,rgba(124,108,255,0.14),transparent_55%)]">
+    <main className="min-h-screen">
       {request && (
         <GenerationOverlay
           request={request}
@@ -131,7 +147,7 @@ export default function Dashboard({ username }: { username: string }) {
         />
       )}
 
-      <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]/60 backdrop-blur sticky top-0 z-10">
+      <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]/60 backdrop-blur-md sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between gap-3">
           <h1 className="text-lg font-bold tracking-tight shrink-0">
             🎮 Learn<span className="text-[var(--color-accent)]">Game</span>
@@ -143,10 +159,13 @@ export default function Dashboard({ username }: { username: string }) {
             >
               🏆 {stats.points} pts · {stats.completed} terminé{stats.completed > 1 ? "s" : ""}
             </span>
-            <span className="text-slate-400 truncate hidden sm:inline">
+            <span className="text-[var(--color-ink-dim)] truncate hidden sm:inline">
               <span className="text-white font-medium">{username}</span>
             </span>
-            <button onClick={logout} className="text-slate-400 hover:text-white transition-colors shrink-0">
+            <button
+              onClick={logout}
+              className="text-[var(--color-ink-dim)] hover:text-white transition-colors shrink-0"
+            >
               Déconnexion
             </button>
           </div>
@@ -156,16 +175,19 @@ export default function Dashboard({ username }: { username: string }) {
       <div className="max-w-5xl mx-auto px-6 py-12">
         {/* --- Zone de création --- */}
         <section className="text-center mb-16 float-in">
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-3">
-            Qu&apos;est-ce que tu veux <span className="text-[var(--color-accent)]">apprendre</span>{" "}
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-3 text-balance">
+            Qu&apos;est-ce que tu veux{" "}
+            <span className="bg-gradient-to-r from-[var(--color-accent-strong)] to-[var(--color-accent-2)] bg-clip-text text-transparent">
+              apprendre
+            </span>{" "}
             aujourd&apos;hui ?
           </h2>
-          <p className="text-slate-400 mb-8">
+          <p className="text-[var(--color-ink-dim)] mb-8">
             Décris un concept, l&apos;IA crée un jeu sur mesure pour te l&apos;enseigner.
           </p>
 
           <div className="max-w-2xl mx-auto">
-            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 shadow-2xl focus-within:border-[var(--color-accent)] transition-colors">
+            <div className="card p-3 shadow-2xl focus-within:border-[var(--color-accent)] focus-within:shadow-[0_0_0_3px_rgba(139,124,255,0.15),0_25px_50px_-12px_rgba(0,0,0,0.5)] transition-all">
               <textarea
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
@@ -178,18 +200,20 @@ export default function Dashboard({ username }: { username: string }) {
                 rows={2}
                 maxLength={500}
                 placeholder='Ex : "Je veux comprendre comment fonctionne TCP/IP"'
-                className="w-full bg-transparent resize-none px-3 py-2 focus:outline-none placeholder:text-slate-500"
+                className="w-full bg-transparent resize-none px-3 py-2 focus:outline-none placeholder:text-[#5b6478]"
               />
               <div className="flex items-center justify-between gap-3 px-2 pb-1 flex-wrap">
-                <div className="flex gap-1.5">
+                <div className="flex gap-1.5" role="radiogroup" aria-label="Niveau de difficulté">
                   {DIFFICULTIES.map((d) => (
                     <button
                       key={d.value}
                       onClick={() => setDifficulty(d.value)}
+                      role="radio"
+                      aria-checked={difficulty === d.value}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                         difficulty === d.value
-                          ? "bg-[var(--color-accent)]/20 text-[var(--color-accent)] border border-[var(--color-accent)]/50"
-                          : "text-slate-400 border border-transparent hover:text-white"
+                          ? "bg-[var(--color-accent)]/20 text-[var(--color-accent-strong)] border border-[var(--color-accent)]/50"
+                          : "text-[var(--color-ink-dim)] border border-transparent hover:text-white"
                       }`}
                     >
                       {d.label}
@@ -199,7 +223,7 @@ export default function Dashboard({ username }: { username: string }) {
                 <button
                   onClick={() => generate()}
                   disabled={topic.trim().length < 3}
-                  className="px-5 py-2 rounded-xl bg-[var(--color-accent)] hover:bg-[#8d7fff] disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-sm transition-colors"
+                  className="btn btn-primary px-5"
                 >
                   ✨ Générer mon jeu
                 </button>
@@ -214,7 +238,7 @@ export default function Dashboard({ username }: { username: string }) {
                     setTopic(s);
                     generate(s);
                   }}
-                  className="px-3 py-1.5 rounded-full text-xs text-slate-300 bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-accent)] hover:text-white transition-colors"
+                  className="px-3 py-1.5 rounded-full text-xs text-slate-300 bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-accent)] hover:text-white hover:bg-[var(--color-surface-2)] transition-colors"
                 >
                   {s}
                 </button>
@@ -227,16 +251,27 @@ export default function Dashboard({ username }: { username: string }) {
         <section>
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
             <h3 className="text-xl font-semibold shrink-0">📚 Bibliothèque de jeux</h3>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="🔍 Rechercher un jeu, un sujet, un auteur…"
-              className="flex-1 min-w-48 max-w-sm px-4 py-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] focus:border-[var(--color-accent)] focus:outline-none text-sm transition-colors"
-            />
+            <div className="relative flex-1 min-w-48 max-w-sm">
+              <input
+                ref={searchRef}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Rechercher un jeu, un sujet, un auteur…"
+                aria-label="Rechercher dans la bibliothèque"
+                className="field text-sm pr-9"
+              />
+              <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[var(--color-ink-dim)] border border-[var(--color-border)] rounded px-1.5 py-0.5 pointer-events-none">
+                /
+              </kbd>
+            </div>
           </div>
 
           <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
-            <div className="flex rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] p-0.5 text-xs">
+            <div
+              className="flex rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] p-0.5 text-xs"
+              role="tablist"
+              aria-label="Filtrer les jeux"
+            >
               {(
                 [
                   ["tous", "Tous"],
@@ -247,10 +282,12 @@ export default function Dashboard({ username }: { username: string }) {
                 <button
                   key={value}
                   onClick={() => setFilter(value)}
+                  role="tab"
+                  aria-selected={filter === value}
                   className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
                     filter === value
                       ? "bg-[var(--color-accent)] text-white"
-                      : "text-slate-400 hover:text-white"
+                      : "text-[var(--color-ink-dim)] hover:text-white"
                   }`}
                 >
                   {label}
@@ -270,7 +307,7 @@ export default function Dashboard({ username }: { username: string }) {
                   className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
                     sort === value
                       ? "bg-[var(--color-surface-2)] text-white"
-                      : "text-slate-400 hover:text-white"
+                      : "text-[var(--color-ink-dim)] hover:text-white"
                   }`}
                 >
                   {label}
@@ -280,11 +317,15 @@ export default function Dashboard({ username }: { username: string }) {
           </div>
 
           {!loaded ? (
-            <p className="text-slate-500 text-center py-12">Chargement…</p>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4" aria-busy="true">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="skeleton h-44" />
+              ))}
+            </div>
           ) : visibleGames.length === 0 ? (
-            <div className="text-center py-16 border border-dashed border-[var(--color-border)] rounded-2xl">
+            <div className="text-center py-16 border border-dashed border-[var(--color-border)] rounded-2xl float-in">
               <div className="text-4xl mb-3">🕹️</div>
-              <p className="text-slate-400">
+              <p className="text-[var(--color-ink-dim)]">
                 {search
                   ? "Aucun jeu ne correspond à ta recherche."
                   : filter === "miens"
@@ -295,14 +336,18 @@ export default function Dashboard({ username }: { username: string }) {
               </p>
             </div>
           ) : (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger">
               {visibleGames.map((g) => {
                 const h = hashCode(g.id);
                 return (
                   <div
                     key={g.id}
                     onClick={() => router.push(`/games/${g.id}`)}
-                    className="relative cursor-pointer bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden hover:border-[var(--color-accent)] hover:-translate-y-0.5 transition-all group"
+                    onKeyDown={(e) => e.key === "Enter" && router.push(`/games/${g.id}`)}
+                    tabIndex={0}
+                    role="link"
+                    aria-label={`Jouer à ${g.title || g.topic}`}
+                    className="relative cursor-pointer card card-interactive overflow-hidden group"
                   >
                     <div
                       className={`h-20 bg-gradient-to-br ${COVERS[h % COVERS.length]} flex items-center justify-center text-4xl`}
@@ -311,29 +356,40 @@ export default function Dashboard({ username }: { username: string }) {
                         {EMOJIS[h % EMOJIS.length]}
                       </span>
                     </div>
-                    {Boolean(g.completed_by_me) && (
-                      <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-emerald-500/90 text-[11px] font-semibold shadow">
-                        ✓ Terminé
-                      </span>
-                    )}
+                    <div className="absolute top-2 right-2 flex gap-1.5">
+                      {Boolean(g.is_public) && (
+                        <span
+                          className="px-2 py-0.5 rounded-full bg-sky-500/90 text-[11px] font-semibold shadow"
+                          title="Jeu public : jouable sans compte via son lien"
+                        >
+                          🌐
+                        </span>
+                      )}
+                      {Boolean(g.completed_by_me) && (
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/90 text-[11px] font-semibold shadow">
+                          ✓ Terminé
+                        </span>
+                      )}
+                    </div>
                     {g.user_id === userId && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           deleteGame(g.id);
                         }}
-                        className="absolute top-2 left-2 w-7 h-7 rounded-full bg-black/40 text-red-300 hover:bg-red-900/70 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-2 left-2 w-7 h-7 rounded-full bg-black/40 text-red-300 hover:bg-red-900/70 text-xs opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                         title="Supprimer ce jeu"
+                        aria-label="Supprimer ce jeu"
                       >
                         🗑
                       </button>
                     )}
                     <div className="p-4">
-                      <h4 className="font-semibold leading-snug group-hover:text-[var(--color-accent)] transition-colors line-clamp-2">
+                      <h4 className="font-semibold leading-snug group-hover:text-[var(--color-accent-strong)] transition-colors line-clamp-2">
                         {g.title || g.topic}
                       </h4>
-                      <p className="text-xs text-slate-500 mt-1.5 line-clamp-2">{g.topic}</p>
-                      <div className="flex items-center gap-2 mt-3 text-[11px] text-slate-400 flex-wrap">
+                      <p className="text-xs text-[#5b6478] mt-1.5 line-clamp-2">{g.topic}</p>
+                      <div className="flex items-center gap-2 mt-3 text-[11px] text-[var(--color-ink-dim)] flex-wrap">
                         <span className="px-2 py-0.5 rounded-full bg-[var(--color-bg)] border border-[var(--color-border)] capitalize">
                           {g.difficulty}
                         </span>

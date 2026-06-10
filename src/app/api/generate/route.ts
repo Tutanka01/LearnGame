@@ -10,6 +10,7 @@ import {
   extractHtml,
   extractTitle,
 } from "@/lib/prompts";
+import { validateGameHtml } from "@/lib/validate";
 
 export const maxDuration = 600;
 
@@ -64,9 +65,10 @@ export async function POST(req: NextRequest) {
           message: existing ? "Amélioration du jeu en cours…" : "Conception du jeu en cours…",
         });
 
-        // Jusqu'à 2 tentatives : certains modèles renvoient parfois une réponse
-        // incomplète ou hors format ; on relance une fois automatiquement.
-        const MAX_ATTEMPTS = 2;
+        // Jusqu'à 3 tentatives : un jeu invalide (réponse tronquée, erreur de
+        // syntaxe JS, hors format…) n'atteint JAMAIS la base. À chaque relance,
+        // on indique au modèle la raison précise du rejet précédent.
+        const MAX_ATTEMPTS = 3;
         let html: string | null = null;
         let lastError = "";
 
@@ -74,13 +76,24 @@ export async function POST(req: NextRequest) {
           if (attempt > 1) {
             send({
               type: "status",
-              message: `La première réponse était invalide (${lastError}), nouvelle tentative…`,
+              message: `La réponse précédente était invalide (${lastError}), nouvelle tentative…`,
             });
             send({ type: "reset" });
           }
+          const attemptMessages: ChatMessage[] = lastError
+            ? [
+                messages[0],
+                {
+                  role: "user",
+                  content:
+                    `${messages[1].content}\n\nATTENTION : ta tentative précédente a été rejetée car ${lastError}. ` +
+                    "Renvoie cette fois un document HTML COMPLET et valide, du <!DOCTYPE html> jusqu'au </html> final, sans aucune erreur de syntaxe JavaScript.",
+                },
+              ]
+            : messages;
           let raw = "";
           try {
-            for await (const event of streamChat(messages, req.signal)) {
+            for await (const event of streamChat(attemptMessages, req.signal)) {
               if (event.kind === "reasoning") {
                 send({ type: "reasoning", text: event.text });
               } else {
@@ -95,7 +108,15 @@ export async function POST(req: NextRequest) {
             continue;
           }
           html = extractHtml(raw);
-          if (!html) lastError = "le modèle n'a pas renvoyé un document HTML complet";
+          if (!html) {
+            lastError = "le modèle n'a pas renvoyé un document HTML complet (réponse tronquée ou hors format)";
+            continue;
+          }
+          const problem = validateGameHtml(html);
+          if (problem) {
+            lastError = problem;
+            html = null;
+          }
         }
 
         if (!html) {
