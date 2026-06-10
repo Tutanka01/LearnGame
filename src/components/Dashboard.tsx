@@ -1,0 +1,355 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import GenerationOverlay, { GenerationRequest } from "./GenerationOverlay";
+
+interface GameSummary {
+  id: string;
+  topic: string;
+  difficulty: string;
+  title: string;
+  version: number;
+  plays: number;
+  created_at: string;
+  updated_at: string;
+  user_id: number;
+  author: string;
+  completed_by_me: number;
+  finishers: number;
+}
+
+interface Stats {
+  completed: number;
+  points: number;
+}
+
+const SUGGESTIONS = [
+  "Le modèle TCP/IP et l'encapsulation des paquets",
+  "Les bases de SQL : SELECT, JOIN et GROUP BY",
+  "La récursivité en programmation",
+  "Le chiffrement asymétrique et les clés RSA",
+  "Les sous-réseaux IPv4 et les masques",
+  "La complexité algorithmique (notation Big O)",
+];
+
+const DIFFICULTIES = [
+  { value: "débutant", label: "🌱 Débutant" },
+  { value: "intermédiaire", label: "🚀 Intermédiaire" },
+  { value: "avancé", label: "🔥 Avancé" },
+];
+
+// Couverture déterministe par jeu : dégradé + emoji dérivés de l'id.
+const COVERS = [
+  "from-violet-600/70 to-fuchsia-500/50",
+  "from-cyan-600/70 to-blue-500/50",
+  "from-emerald-600/70 to-teal-500/50",
+  "from-orange-600/70 to-amber-500/50",
+  "from-rose-600/70 to-pink-500/50",
+  "from-indigo-600/70 to-sky-500/50",
+];
+const EMOJIS = ["🧠", "🚀", "🧩", "⚡", "🛰️", "🔬", "🗺️", "🎯", "🏗️", "🔐"];
+
+function hashCode(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+export default function Dashboard({ username }: { username: string }) {
+  const router = useRouter();
+  const [topic, setTopic] = useState("");
+  const [difficulty, setDifficulty] = useState("intermédiaire");
+  const [request, setRequest] = useState<GenerationRequest | null>(null);
+  const [games, setGames] = useState<GameSummary[]>([]);
+  const [stats, setStats] = useState<Stats>({ completed: 0, points: 0 });
+  const [userId, setUserId] = useState<number | null>(null);
+  const [filter, setFilter] = useState<"tous" | "miens" | "à-faire">("tous");
+  const [sort, setSort] = useState<"récents" | "populaires">("récents");
+  const [search, setSearch] = useState("");
+  const [loaded, setLoaded] = useState(false);
+
+  const loadGames = useCallback(async () => {
+    const res = await fetch("/api/games");
+    if (res.ok) {
+      const data = await res.json();
+      setGames(data.games);
+      setUserId(data.userId);
+      setStats(data.stats);
+    }
+    setLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    loadGames();
+  }, [loadGames]);
+
+  function generate(t?: string) {
+    const finalTopic = (t ?? topic).trim();
+    if (finalTopic.length < 3) return;
+    setRequest({ topic: finalTopic, difficulty });
+  }
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  }
+
+  async function deleteGame(id: string) {
+    if (!confirm("Supprimer définitivement ce jeu ?")) return;
+    const res = await fetch(`/api/games/${id}`, { method: "DELETE" });
+    if (res.ok) loadGames();
+  }
+
+  const visibleGames = useMemo(() => {
+    let list = games;
+    if (filter === "miens") list = list.filter((g) => g.user_id === userId);
+    if (filter === "à-faire") list = list.filter((g) => !g.completed_by_me);
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (g) =>
+          g.title.toLowerCase().includes(q) ||
+          g.topic.toLowerCase().includes(q) ||
+          g.author.toLowerCase().includes(q)
+      );
+    }
+    if (sort === "populaires") {
+      list = [...list].sort((a, b) => b.finishers - a.finishers || b.plays - a.plays);
+    }
+    return list;
+  }, [games, filter, sort, search, userId]);
+
+  return (
+    <main className="min-h-screen bg-[radial-gradient(ellipse_at_top,rgba(124,108,255,0.14),transparent_55%)]">
+      {request && (
+        <GenerationOverlay
+          request={request}
+          onDone={(id) => router.push(`/games/${id}`)}
+          onCancel={() => setRequest(null)}
+        />
+      )}
+
+      <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]/60 backdrop-blur sticky top-0 z-10">
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between gap-3">
+          <h1 className="text-lg font-bold tracking-tight shrink-0">
+            🎮 Learn<span className="text-[var(--color-accent)]">Game</span>
+          </h1>
+          <div className="flex items-center gap-3 sm:gap-4 text-sm min-w-0">
+            <span
+              className="px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-300 text-xs font-medium whitespace-nowrap"
+              title="Tes points = la somme de tes meilleurs scores"
+            >
+              🏆 {stats.points} pts · {stats.completed} terminé{stats.completed > 1 ? "s" : ""}
+            </span>
+            <span className="text-slate-400 truncate hidden sm:inline">
+              <span className="text-white font-medium">{username}</span>
+            </span>
+            <button onClick={logout} className="text-slate-400 hover:text-white transition-colors shrink-0">
+              Déconnexion
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-5xl mx-auto px-6 py-12">
+        {/* --- Zone de création --- */}
+        <section className="text-center mb-16 float-in">
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-3">
+            Qu&apos;est-ce que tu veux <span className="text-[var(--color-accent)]">apprendre</span>{" "}
+            aujourd&apos;hui ?
+          </h2>
+          <p className="text-slate-400 mb-8">
+            Décris un concept, l&apos;IA crée un jeu sur mesure pour te l&apos;enseigner.
+          </p>
+
+          <div className="max-w-2xl mx-auto">
+            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 shadow-2xl focus-within:border-[var(--color-accent)] transition-colors">
+              <textarea
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    generate();
+                  }
+                }}
+                rows={2}
+                maxLength={500}
+                placeholder='Ex : "Je veux comprendre comment fonctionne TCP/IP"'
+                className="w-full bg-transparent resize-none px-3 py-2 focus:outline-none placeholder:text-slate-500"
+              />
+              <div className="flex items-center justify-between gap-3 px-2 pb-1 flex-wrap">
+                <div className="flex gap-1.5">
+                  {DIFFICULTIES.map((d) => (
+                    <button
+                      key={d.value}
+                      onClick={() => setDifficulty(d.value)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        difficulty === d.value
+                          ? "bg-[var(--color-accent)]/20 text-[var(--color-accent)] border border-[var(--color-accent)]/50"
+                          : "text-slate-400 border border-transparent hover:text-white"
+                      }`}
+                    >
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => generate()}
+                  disabled={topic.trim().length < 3}
+                  className="px-5 py-2 rounded-xl bg-[var(--color-accent)] hover:bg-[#8d7fff] disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-sm transition-colors"
+                >
+                  ✨ Générer mon jeu
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap justify-center gap-2 mt-5">
+              {SUGGESTIONS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => {
+                    setTopic(s);
+                    generate(s);
+                  }}
+                  className="px-3 py-1.5 rounded-full text-xs text-slate-300 bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-accent)] hover:text-white transition-colors"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* --- Bibliothèque --- */}
+        <section>
+          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+            <h3 className="text-xl font-semibold shrink-0">📚 Bibliothèque de jeux</h3>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="🔍 Rechercher un jeu, un sujet, un auteur…"
+              className="flex-1 min-w-48 max-w-sm px-4 py-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] focus:border-[var(--color-accent)] focus:outline-none text-sm transition-colors"
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
+            <div className="flex rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] p-0.5 text-xs">
+              {(
+                [
+                  ["tous", "Tous"],
+                  ["à-faire", "À faire"],
+                  ["miens", "Mes jeux"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  onClick={() => setFilter(value)}
+                  className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
+                    filter === value
+                      ? "bg-[var(--color-accent)] text-white"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] p-0.5 text-xs">
+              {(
+                [
+                  ["récents", "🕒 Récents"],
+                  ["populaires", "🔥 Populaires"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  onClick={() => setSort(value)}
+                  className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
+                    sort === value
+                      ? "bg-[var(--color-surface-2)] text-white"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {!loaded ? (
+            <p className="text-slate-500 text-center py-12">Chargement…</p>
+          ) : visibleGames.length === 0 ? (
+            <div className="text-center py-16 border border-dashed border-[var(--color-border)] rounded-2xl">
+              <div className="text-4xl mb-3">🕹️</div>
+              <p className="text-slate-400">
+                {search
+                  ? "Aucun jeu ne correspond à ta recherche."
+                  : filter === "miens"
+                    ? "Tu n'as pas encore créé de jeu. Lance-toi !"
+                    : filter === "à-faire"
+                      ? "Bravo, tu as terminé tous les jeux disponibles ! 🎉"
+                      : "Aucun jeu pour l'instant. Sois le premier à en créer un !"}
+              </p>
+            </div>
+          ) : (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {visibleGames.map((g) => {
+                const h = hashCode(g.id);
+                return (
+                  <div
+                    key={g.id}
+                    onClick={() => router.push(`/games/${g.id}`)}
+                    className="relative cursor-pointer bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden hover:border-[var(--color-accent)] hover:-translate-y-0.5 transition-all group"
+                  >
+                    <div
+                      className={`h-20 bg-gradient-to-br ${COVERS[h % COVERS.length]} flex items-center justify-center text-4xl`}
+                    >
+                      <span className="drop-shadow-lg group-hover:scale-125 transition-transform">
+                        {EMOJIS[h % EMOJIS.length]}
+                      </span>
+                    </div>
+                    {Boolean(g.completed_by_me) && (
+                      <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-emerald-500/90 text-[11px] font-semibold shadow">
+                        ✓ Terminé
+                      </span>
+                    )}
+                    {g.user_id === userId && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteGame(g.id);
+                        }}
+                        className="absolute top-2 left-2 w-7 h-7 rounded-full bg-black/40 text-red-300 hover:bg-red-900/70 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Supprimer ce jeu"
+                      >
+                        🗑
+                      </button>
+                    )}
+                    <div className="p-4">
+                      <h4 className="font-semibold leading-snug group-hover:text-[var(--color-accent)] transition-colors line-clamp-2">
+                        {g.title || g.topic}
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-1.5 line-clamp-2">{g.topic}</p>
+                      <div className="flex items-center gap-2 mt-3 text-[11px] text-slate-400 flex-wrap">
+                        <span className="px-2 py-0.5 rounded-full bg-[var(--color-bg)] border border-[var(--color-border)] capitalize">
+                          {g.difficulty}
+                        </span>
+                        <span>par {g.user_id === userId ? "toi" : g.author}</span>
+                        <span>· ▶ {g.plays}</span>
+                        {g.finishers > 0 && <span>· 🏁 {g.finishers}</span>}
+                        {g.version > 1 && <span>· v{g.version}</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
+    </main>
+  );
+}

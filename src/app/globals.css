@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0b0d14;
+  --color-surface: #131722;
+  --color-surface-2: #1a2030;
+  --color-border: #262e42;
+  --color-accent: #7c6cff;
+  --color-accent-2: #3dd6c3;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: #e8eaf2;
+  min-height: 100%;
+}
+
+::selection {
+  background: rgba(124, 108, 255, 0.4);
+}
+
+@keyframes float-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 24px rgba(124, 108, 255, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 48px rgba(124, 108, 255, 0.55);
+  }
+}
+
+.float-in {
+  animation: float-in 0.45s ease-out both;
+}
+
+.pulse-glow {
+  animation: pulse-glow 2.2s ease-in-out infinite;
+}
+
+/* Barre de défilement discrète pour le flux de code */
+.code-stream::-webkit-scrollbar {
+  width: 6px;
+}
+.code-stream::-webkit-scrollbar-thumb {
+  background: #2c3550;
+  border-radius: 3px;
+}
