@@ -47,6 +47,28 @@ function createDb(): DatabaseSync {
 
     CREATE INDEX IF NOT EXISTS idx_scores_game ON scores(game_id);
     CREATE INDEX IF NOT EXISTS idx_scores_user ON scores(user_id);
+
+    -- Historique de conversation du Studio (chat à gauche, façon Lovable).
+    CREATE TABLE IF NOT EXISTS game_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+      content TEXT NOT NULL,
+      version INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_messages_game ON game_messages(game_id);
+
+    -- Versions archivées des jeux : permet de restaurer un état précédent.
+    CREATE TABLE IF NOT EXISTS game_versions (
+      game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+      version INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      html TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (game_id, version)
+    );
   `);
 
   // Migrations additives : les colonnes de partage public n'existaient pas en v1.
@@ -96,6 +118,37 @@ export interface Game {
   created_at: string;
   updated_at: string;
   author?: string;
+}
+
+export interface GameMessage {
+  id: number;
+  game_id: string;
+  user_id: number | null;
+  role: "user" | "assistant";
+  content: string;
+  version: number | null;
+  created_at: string;
+  username?: string | null;
+}
+
+/** Archive la version courante d'un jeu avant qu'elle ne soit écrasée. */
+export function archiveCurrentVersion(gameId: string) {
+  db.prepare(
+    `INSERT OR REPLACE INTO game_versions (game_id, version, title, html)
+     SELECT id, version, title, html FROM games WHERE id = ?`
+  ).run(gameId);
+}
+
+export function addGameMessage(
+  gameId: string,
+  userId: number | null,
+  role: "user" | "assistant",
+  content: string,
+  version: number | null = null
+) {
+  db.prepare(
+    "INSERT INTO game_messages (game_id, user_id, role, content, version) VALUES (?, ?, ?, ?, ?)"
+  ).run(gameId, userId, role, content, version);
 }
 
 export default db;

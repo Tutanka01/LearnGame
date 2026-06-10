@@ -238,6 +238,49 @@ body {
   }
 }
 
+/* --- Studio : bulles de chat --- */
+.chat-user {
+  background: linear-gradient(135deg, rgba(139, 124, 255, 0.22), rgba(109, 91, 245, 0.18));
+  border: 1px solid rgba(139, 124, 255, 0.35);
+  border-radius: 1rem;
+  border-bottom-right-radius: 0.25rem;
+}
+
+.chat-ai {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  border-bottom-left-radius: 0.25rem;
+}
+
+/* Indicateur "l'IA écrit" : trois points qui dansent */
+@keyframes typing-bounce {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+.typing-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: var(--color-accent-strong);
+  animation: typing-bounce 1.2s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.typing-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
 /* --- Barres de défilement discrètes --- */
 .code-stream::-webkit-scrollbar,
 .thin-scroll::-webkit-scrollbar {

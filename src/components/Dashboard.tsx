@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import GenerationOverlay, { GenerationRequest } from "./GenerationOverlay";
+import { useGeneration } from "./GenerationProvider";
 
 interface GameSummary {
   id: string;
@@ -60,9 +60,9 @@ function hashCode(s: string): number {
 
 export default function Dashboard({ username }: { username: string }) {
   const router = useRouter();
+  const generation = useGeneration();
   const [topic, setTopic] = useState("");
   const [difficulty, setDifficulty] = useState("intermédiaire");
-  const [request, setRequest] = useState<GenerationRequest | null>(null);
   const [games, setGames] = useState<GameSummary[]>([]);
   const [stats, setStats] = useState<Stats>({ completed: 0, points: 0 });
   const [userId, setUserId] = useState<number | null>(null);
@@ -101,9 +101,21 @@ export default function Dashboard({ username }: { username: string }) {
   }, []);
 
   function generate(t?: string) {
+    if (generation.state.status === "running") {
+      // Une génération tourne déjà : on rouvre son Studio si c'est une création.
+      if (generation.state.request && "topic" in generation.state.request) {
+        router.push("/studio");
+      } else {
+        generation.restore();
+      }
+      return;
+    }
     const finalTopic = (t ?? topic).trim();
     if (finalTopic.length < 3) return;
-    setRequest({ topic: finalTopic, difficulty });
+    // Façon Lovable : on ouvre le Studio immédiatement, la génération s'y affiche.
+    if (generation.start({ topic: finalTopic, difficulty }, { embedded: true })) {
+      router.push("/studio");
+    }
   }
 
   async function logout() {
@@ -139,14 +151,6 @@ export default function Dashboard({ username }: { username: string }) {
 
   return (
     <main className="min-h-screen">
-      {request && (
-        <GenerationOverlay
-          request={request}
-          onDone={(id) => router.push(`/games/${id}`)}
-          onCancel={() => setRequest(null)}
-        />
-      )}
-
       <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]/60 backdrop-blur-md sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between gap-3">
           <h1 className="text-lg font-bold tracking-tight shrink-0">
@@ -222,10 +226,12 @@ export default function Dashboard({ username }: { username: string }) {
                 </div>
                 <button
                   onClick={() => generate()}
-                  disabled={topic.trim().length < 3}
+                  disabled={topic.trim().length < 3 && generation.state.status !== "running"}
                   className="btn btn-primary px-5"
                 >
-                  ✨ Générer mon jeu
+                  {generation.state.status === "running"
+                    ? "⏳ Génération en cours…"
+                    : "✨ Générer mon jeu"}
                 </button>
               </div>
             </div>

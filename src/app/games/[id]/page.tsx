@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import db, { Game } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import GamePlayer from "@/components/GamePlayer";
+import Studio from "@/components/Studio";
 
 export const dynamic = "force-dynamic";
 
@@ -22,5 +22,5 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   if (!game) notFound();
 
   // node:sqlite renvoie des objets à prototype nul ; Next exige des objets simples.
-  return <GamePlayer game={{ ...game }} isOwner={game.user_id === user.id} />;
+  return <Studio game={{ ...game }} isOwner={game.user_id === user.id} />;
 }
