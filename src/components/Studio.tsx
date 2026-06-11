@@ -617,7 +617,7 @@ export default function Studio({
         <Panel
           className={`${mobilePane === "preview" ? "flex" : "hidden"} lg:flex flex-col min-w-0 min-h-0`}
         >
-          <section className="flex flex-col w-full min-h-0">
+          <section className="flex flex-1 flex-col w-full min-h-0">
             {/* Barre d'outils */}
             <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface)]/60 flex-wrap">
               <div className="flex rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] p-0.5 text-xs">
@@ -759,7 +759,7 @@ export default function Studio({
             </div>
 
             {/* Contenu */}
-            <div className="flex-1 flex min-h-0">
+            <div className="flex-1 flex min-h-0 overflow-hidden">
               <div className="flex-1 min-w-0 relative bg-[var(--color-bg)]">
                 {/* L'iframe est UNIQUE et stable : changer de vue ou d'appareil ne
                     la remonte jamais (la partie en cours n'est pas perdue). */}
