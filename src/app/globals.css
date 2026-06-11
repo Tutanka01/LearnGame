@@ -281,6 +281,123 @@ body {
   animation-delay: 0.3s;
 }
 
+/* --- Progression honnête : barre indéterminée (pas de faux pourcentage) --- */
+@keyframes indeterminate-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+.progress-indeterminate {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+.progress-indeterminate::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 30%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--color-accent), var(--color-accent-2), transparent);
+  animation: indeterminate-slide 1.4s ease-in-out infinite;
+}
+
+/* --- Poignée de redimensionnement du Studio --- */
+.resize-handle {
+  width: 6px;
+  margin: 0 -2px;
+  position: relative;
+  z-index: 10;
+  cursor: col-resize;
+  transition: background-color 0.15s ease;
+}
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 36px;
+  border-radius: 2px;
+  background: var(--color-border-strong);
+  transition: background-color 0.15s ease, height 0.15s ease;
+}
+.resize-handle:hover::after,
+.resize-handle[data-resize-handle-active]::after {
+  background: var(--color-accent);
+  height: 56px;
+}
+
+/* --- Dialogues (Radix) et toasts --- */
+@keyframes dialog-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes dialog-pop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+@keyframes toast-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.dialog-overlay-in {
+  animation: dialog-overlay-in 0.18s ease both;
+}
+.dialog-pop {
+  animation: dialog-pop 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.toast-pop {
+  animation: toast-pop 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* --- Vue code (shiki) : fond du thème conservé, padding et police unifiés --- */
+.code-shiki pre {
+  padding: 1.25rem;
+  min-height: 100%;
+  overflow: visible;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+.code-shiki code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* --- Aperçu de jeu au survol des cartes de la bibliothèque --- */
+@keyframes preview-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.preview-fade-in {
+  animation: preview-fade-in 0.35s ease 0.15s both;
+}
+
 /* --- Barres de défilement discrètes --- */
 .code-stream::-webkit-scrollbar,
 .thin-scroll::-webkit-scrollbar {

@@ -1,25 +1,36 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import db, { User } from "@/lib/db";
-import { verifyPassword, setSessionCookie } from "@/lib/auth";
+import { verifyPassword, setSessionCookie, PASSWORD_MAX_LENGTH } from "@/lib/auth";
+import { apiError, handleApi, readJson } from "@/lib/api";
+import { clientIp, rateLimit } from "@/lib/ratelimit";
 
 export async function POST(req: NextRequest) {
-  const { username, password } = await req.json().catch(() => ({}));
+  return handleApi(async () => {
+    const { username, password } = await readJson<{ username: string; password: string }>(req);
 
-  if (typeof username !== "string" || typeof password !== "string") {
-    return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
-  }
+    if (
+      typeof username !== "string" ||
+      typeof password !== "string" ||
+      password.length > PASSWORD_MAX_LENGTH
+    ) {
+      return apiError(400, "Requête invalide.");
+    }
 
-  const user = db
-    .prepare("SELECT * FROM users WHERE username = ?")
-    .get(username.trim()) as unknown as User | undefined;
+    const name = username.trim();
+    // Anti force brute : 10 tentatives par minute, par IP et par compte visé.
+    if (!rateLimit(`login:${clientIp(req)}:${name.toLowerCase()}`, 10, 60_000)) {
+      return apiError(429, "Trop de tentatives. Réessaie dans une minute.");
+    }
 
-  if (!user || !verifyPassword(password, user.password_hash)) {
-    return NextResponse.json(
-      { error: "Nom d'utilisateur ou mot de passe incorrect." },
-      { status: 401 }
-    );
-  }
+    const user = db.prepare("SELECT * FROM users WHERE username = ?").get(name) as unknown as
+      | User
+      | undefined;
 
-  await setSessionCookie(user.id);
-  return NextResponse.json({ ok: true });
+    if (!user || !verifyPassword(password, user.password_hash)) {
+      return apiError(401, "Nom d'utilisateur ou mot de passe incorrect.");
+    }
+
+    await setSessionCookie(user.id);
+    return Response.json({ ok: true });
+  });
 }

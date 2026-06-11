@@ -2,6 +2,7 @@
 
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 
 const FEATURES = [
   ["✨", "Décris un concept, l'IA crée un jeu sur mesure"],
@@ -33,7 +34,9 @@ export default function LoginPage() {
         setError(data.error || "Une erreur est survenue.");
         return;
       }
-      router.push("/");
+      // Retour à la page d'origine si la session avait expiré (?next=…).
+      const next = new URLSearchParams(window.location.search).get("next");
+      router.push(next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
       router.refresh();
     } catch {
       setError("Impossible de contacter le serveur.");
@@ -137,7 +140,13 @@ export default function LoginPage() {
             )}
 
             <button type="submit" disabled={loading} className="btn btn-primary w-full py-3">
-              {loading ? "…" : mode === "login" ? "Se connecter" : "Créer mon compte"}
+              {loading ? (
+                <Loader2 size={16} className="animate-spin" aria-label="Connexion en cours" />
+              ) : mode === "login" ? (
+                "Se connecter"
+              ) : (
+                "Créer mon compte"
+              )}
             </button>
           </form>
         </div>

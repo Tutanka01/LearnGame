@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import GenerationProvider from "@/components/GenerationProvider";
+import ToastProvider from "@/components/ui/ToastProvider";
+import ConfirmProvider from "@/components/ui/ConfirmDialog";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-inter" });
@@ -23,7 +25,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="fr" className={inter.variable}>
       <body className="antialiased app-bg">
-        <GenerationProvider>{children}</GenerationProvider>
+        <ToastProvider>
+          <ConfirmProvider>
+            <GenerationProvider>{children}</GenerationProvider>
+          </ConfirmProvider>
+        </ToastProvider>
       </body>
     </html>
   );

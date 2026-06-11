@@ -83,6 +83,79 @@ function createDb(): DatabaseSync {
     db.exec("ALTER TABLE games ADD COLUMN public_slug TEXT;");
     db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_games_slug ON games(public_slug);");
   }
+  // Résumé du changement qui a produit la version COURANTE du jeu : copié dans
+  // game_versions.summary au moment de l'archivage (l'historique reste lisible).
+  if (!gameCols.includes("change_summary")) {
+    db.exec("ALTER TABLE games ADD COLUMN change_summary TEXT NOT NULL DEFAULT '';");
+  }
+
+  const msgCols = db
+    .prepare("PRAGMA table_info(game_messages)")
+    .all()
+    .map((c) => (c as { name: string }).name);
+  // kind : la nature du message n'est plus encodée dans son texte
+  // (chat | restore | error | cancelled), l'UI peut les styler différemment.
+  if (!msgCols.includes("kind")) {
+    db.exec("ALTER TABLE game_messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'chat';");
+  }
+  if (!msgCols.includes("job_id")) {
+    db.exec("ALTER TABLE game_messages ADD COLUMN job_id TEXT;");
+  }
+
+  const verCols = db
+    .prepare("PRAGMA table_info(game_versions)")
+    .all()
+    .map((c) => (c as { name: string }).name);
+  if (!verCols.includes("summary")) {
+    db.exec("ALTER TABLE game_versions ADD COLUMN summary TEXT NOT NULL DEFAULT '';");
+  }
+
+  // Jobs de génération persistés : la génération vit côté serveur, le client
+  // s'y (re)connecte par SSE. Les événements sont rejouables (seq croissant).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS generation_jobs (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      game_id TEXT REFERENCES games(id) ON DELETE SET NULL,
+      type TEXT NOT NULL CHECK (type IN ('create', 'edit')),
+      status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'done', 'error', 'cancelled')),
+      payload TEXT NOT NULL,
+      result TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      started_at TEXT,
+      finished_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_jobs_user ON generation_jobs(user_id, status);
+    CREATE INDEX IF NOT EXISTS idx_jobs_game ON generation_jobs(game_id);
+
+    CREATE TABLE IF NOT EXISTS generation_events (
+      job_id TEXT NOT NULL REFERENCES generation_jobs(id) ON DELETE CASCADE,
+      seq INTEGER NOT NULL,
+      data TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (job_id, seq)
+    );
+  `);
+
+  // Un seul score par (jeu, élève) : on dédoublonne (meilleur ratio conservé)
+  // PUIS on pose l'index unique. Idempotent : ne s'exécute qu'une fois.
+  const hasUniqueScores = db
+    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_scores_unique'")
+    .get();
+  if (!hasUniqueScores) {
+    db.exec(`
+      DELETE FROM scores WHERE id NOT IN (
+        SELECT id FROM (
+          SELECT id, ROW_NUMBER() OVER (
+            PARTITION BY game_id, user_id
+            ORDER BY CAST(score AS REAL) / MAX(max_score, 1) DESC, created_at ASC
+          ) AS rn FROM scores
+        ) WHERE rn = 1
+      );
+    `);
+    db.exec("CREATE UNIQUE INDEX idx_scores_unique ON scores(game_id, user_id);");
+  }
 
   return db;
 }
@@ -115,10 +188,13 @@ export interface Game {
   plays: number;
   is_public: number;
   public_slug: string | null;
+  change_summary: string;
   created_at: string;
   updated_at: string;
   author?: string;
 }
+
+export type MessageKind = "chat" | "restore" | "error" | "cancelled";
 
 export interface GameMessage {
   id: number;
@@ -127,15 +203,42 @@ export interface GameMessage {
   role: "user" | "assistant";
   content: string;
   version: number | null;
+  kind: MessageKind;
+  job_id: string | null;
   created_at: string;
   username?: string | null;
 }
 
-/** Archive la version courante d'un jeu avant qu'elle ne soit écrasée. */
+/**
+ * Exécute `fn` dans une transaction (BEGIN IMMEDIATE : le verrou d'écriture
+ * est pris immédiatement, pas de course entre lecture et écriture).
+ * `fn` doit rester synchrone — node:sqlite l'est, c'est tout l'intérêt.
+ */
+export function withTransaction<T>(fn: () => T): T {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const result = fn();
+    db.exec("COMMIT");
+    return result;
+  } catch (err) {
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      // transaction déjà annulée
+    }
+    throw err;
+  }
+}
+
+/**
+ * Archive la version courante d'un jeu avant qu'elle ne soit écrasée.
+ * INSERT strict : une collision de version est une vraie erreur (course),
+ * jamais un écrasement silencieux — à appeler dans withTransaction().
+ */
 export function archiveCurrentVersion(gameId: string) {
   db.prepare(
-    `INSERT OR REPLACE INTO game_versions (game_id, version, title, html)
-     SELECT id, version, title, html FROM games WHERE id = ?`
+    `INSERT INTO game_versions (game_id, version, title, html, summary)
+     SELECT id, version, title, html, change_summary FROM games WHERE id = ?`
   ).run(gameId);
 }
 
@@ -144,11 +247,13 @@ export function addGameMessage(
   userId: number | null,
   role: "user" | "assistant",
   content: string,
-  version: number | null = null
+  version: number | null = null,
+  kind: MessageKind = "chat",
+  jobId: string | null = null
 ) {
   db.prepare(
-    "INSERT INTO game_messages (game_id, user_id, role, content, version) VALUES (?, ?, ?, ?, ?)"
-  ).run(gameId, userId, role, content, version);
+    "INSERT INTO game_messages (game_id, user_id, role, content, version, kind, job_id) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(gameId, userId, role, content, version, kind, jobId);
 }
 
 export default db;

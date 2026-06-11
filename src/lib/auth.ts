@@ -2,19 +2,41 @@ import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import db, { User } from "./db";
 
-const SECRET = process.env.SESSION_SECRET || "dev-secret-change-me";
 const SESSION_COOKIE = "lg_session";
 const SESSION_DAYS = 30;
+
+/** Au-delà, scrypt devient coûteux : refusé AVANT tout calcul. */
+export const PASSWORD_MAX_LENGTH = 256;
+
+// Secret évalué paresseusement (pas au build) : en production, l'absence de
+// SESSION_SECRET est une faute de configuration fatale — n'importe qui pourrait
+// forger un cookie de session avec le secret de développement.
+let cachedSecret: string | null = null;
+function getSecret(): string {
+  if (cachedSecret) return cachedSecret;
+  const fromEnv = process.env.SESSION_SECRET?.trim();
+  if (fromEnv) return (cachedSecret = fromEnv);
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "SESSION_SECRET doit être défini en production : sans lui, les sessions sont forgeables."
+    );
+  }
+  return (cachedSecret = "dev-secret-change-me");
+}
 
 // --- Mots de passe (scrypt, pas de dépendance native supplémentaire) ---
 
 export function hashPassword(password: string): string {
+  if (password.length > PASSWORD_MAX_LENGTH) {
+    throw new Error(`Mot de passe trop long (maximum ${PASSWORD_MAX_LENGTH} caractères).`);
+  }
   const salt = randomBytes(16).toString("hex");
   const hash = scryptSync(password, salt, 64).toString("hex");
   return `${salt}:${hash}`;
 }
 
 export function verifyPassword(password: string, stored: string): boolean {
+  if (password.length > PASSWORD_MAX_LENGTH) return false;
   const [salt, hash] = stored.split(":");
   if (!salt || !hash) return false;
   const candidate = scryptSync(password, salt, 64);
@@ -25,7 +47,7 @@ export function verifyPassword(password: string, stored: string): boolean {
 // --- Sessions (cookie signé HMAC : userId.expiry.signature) ---
 
 function sign(payload: string): string {
-  return createHmac("sha256", SECRET).update(payload).digest("hex");
+  return createHmac("sha256", getSecret()).update(payload).digest("hex");
 }
 
 export function createSessionToken(userId: number): string {
@@ -53,6 +75,9 @@ export async function setSessionCookie(userId: number) {
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_DAYS * 24 * 3600,
+    // Cookie réservé au HTTPS en production. Déploiement en HTTP pur
+    // (ex. réseau interne sans TLS) : mettre SESSION_SECURE_COOKIE=0.
+    secure: process.env.NODE_ENV === "production" && process.env.SESSION_SECURE_COOKIE !== "0",
   });
 }
 

@@ -8,7 +8,8 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useGeneration } from "@/components/GenerationProvider";
-import { WorkingBubble, ErrorBubble, LiveStream } from "@/components/StudioShared";
+import { ErrorBubble, LiveStream } from "@/components/StudioShared";
+import { GenerationBubble } from "@/components/GenerationPanel";
 
 export default function StudioNewPage() {
   const router = useRouter();
@@ -25,8 +26,10 @@ export default function StudioNewPage() {
   }, [setEmbedded]);
 
   // Fin de génération → Studio du jeu. Pas de génération → retour accueil.
+  // On attend `bootstrapped` : après un F5, le provider va d'abord récupérer
+  // le job actif côté serveur et raccrocher le flux — ne pas rediriger avant.
   useEffect(() => {
-    if (navigated.current) return;
+    if (navigated.current || !generation.bootstrapped) return;
     if (state.status === "done" && state.result) {
       navigated.current = true;
       const id = state.result.id;
@@ -36,7 +39,7 @@ export default function StudioNewPage() {
       navigated.current = true;
       router.replace("/");
     }
-  }, [state.status, state.result, router, generation]);
+  }, [state.status, state.result, router, generation, generation.bootstrapped]);
 
   const isNew = state.request !== null && "topic" in state.request;
   if (!isNew || state.status === "idle" || state.status === "done") {
@@ -113,9 +116,7 @@ export default function StudioNewPage() {
               </div>
             </div>
 
-            {state.status === "running" && (
-              <WorkingBubble state={state} onCancel={generation.cancel} />
-            )}
+            {state.status === "running" && <GenerationBubble api={generation} />}
             {state.status === "error" && (
               <ErrorBubble
                 message={state.error}

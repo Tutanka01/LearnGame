@@ -136,16 +136,30 @@ export async function* streamChat(
   };
   const extras = reasoningParams(baseUrl);
 
-  const doFetch = (body: object) =>
-    fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      signal,
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify(body),
-    });
+  const doFetch = async (body: object) => {
+    try {
+      return await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        signal,
+        headers: {
+          "Content-Type": "application/json",
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      if (signal?.aborted) throw err; // annulation : ne pas maquiller
+      // "fetch failed" nu est inexploitable : on remonte l'URL et la cause
+      // (ECONNREFUSED, ETIMEDOUT, ENOTFOUND…). Cas typique : gateway
+      // universitaire joignable uniquement depuis le réseau de la fac / VPN.
+      const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+      const detail = cause?.code || cause?.message || (err instanceof Error ? err.message : "");
+      throw new Error(
+        `Impossible de joindre l'endpoint IA (${baseUrl})${detail ? ` : ${detail}` : ""}. ` +
+          "Vérifie ta connexion réseau (VPN universitaire ?) et la variable OPENAI_BASE_URL."
+      );
+    }
+  };
 
   let res = await doFetch({ ...baseBody, ...extras });
   // Champs de contrôle du raisonnement inconnus du serveur : on retente sans.

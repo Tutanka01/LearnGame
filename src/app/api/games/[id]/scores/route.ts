@@ -1,58 +1,62 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import db from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { apiError, handleApi, readJson, requireGame, requireUser } from "@/lib/api";
+import { rateLimit } from "@/lib/ratelimit";
 
-// POST : le jeu (via postMessage → GamePlayer) enregistre le score d'une partie terminée.
+// POST : le jeu (via postMessage → Studio/PublicPlayer) enregistre une partie
+// terminée. Une seule ligne par (jeu, élève) : seul le MEILLEUR essai est gardé.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Non connecté." }, { status: 401 });
+  return handleApi(async () => {
+    const user = await requireUser();
+    const { id } = await params;
+    requireGame(id);
 
-  const { id } = await params;
-  const game = db.prepare("SELECT id FROM games WHERE id = ?").get(id);
-  if (!game) return NextResponse.json({ error: "Jeu introuvable." }, { status: 404 });
+    // Garde-fou anti-spam : un vrai joueur ne termine pas un jeu toutes les 3 s.
+    if (!rateLimit(`scores:${id}:${user.id}`, 1, 3_000)) {
+      return apiError(429, "Doucement ! Score déjà enregistré il y a un instant.");
+    }
 
-  const body = await req.json().catch(() => ({}));
-  let score = Math.round(Number(body.score));
-  let maxScore = Math.round(Number(body.maxScore));
-  if (!Number.isFinite(score) || !Number.isFinite(maxScore)) {
-    return NextResponse.json({ error: "Score invalide." }, { status: 400 });
-  }
-  maxScore = Math.min(Math.max(maxScore, 1), 1_000_000);
-  score = Math.min(Math.max(score, 0), maxScore);
+    const body = await readJson<{ score: number; maxScore: number }>(req);
+    let score = Math.round(Number(body.score));
+    let maxScore = Math.round(Number(body.maxScore));
+    if (!Number.isFinite(score) || !Number.isFinite(maxScore)) {
+      return apiError(400, "Score invalide.");
+    }
+    maxScore = Math.min(Math.max(maxScore, 1), 1_000_000);
+    score = Math.min(Math.max(score, 0), maxScore);
 
-  db.prepare("INSERT INTO scores (game_id, user_id, score, max_score) VALUES (?, ?, ?, ?)").run(
-    id,
-    user.id,
-    score,
-    maxScore
-  );
+    // UPSERT « meilleur essai » : on ne remplace que si le ratio s'améliore.
+    db.prepare(
+      `INSERT INTO scores (game_id, user_id, score, max_score) VALUES (?, ?, ?, ?)
+       ON CONFLICT(game_id, user_id) DO UPDATE SET
+         score = excluded.score,
+         max_score = excluded.max_score,
+         created_at = datetime('now')
+       WHERE CAST(excluded.score AS REAL) / MAX(excluded.max_score, 1)
+           > CAST(scores.score AS REAL) / MAX(scores.max_score, 1)`
+    ).run(id, user.id, score, maxScore);
 
-  return NextResponse.json({ ok: true });
+    return Response.json({ ok: true });
+  });
 }
 
-// GET : classement du jeu (meilleur essai par élève, en pourcentage).
+// GET : classement du jeu (un meilleur essai par élève, trié par pourcentage).
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Non connecté." }, { status: 401 });
+  return handleApi(async () => {
+    const user = await requireUser();
+    const { id } = await params;
 
-  const { id } = await params;
-  const rows = db
-    .prepare(
-      `SELECT u.username, t.score, t.max_score, t.created_at, t.user_id
-       FROM (
-         SELECT s.*, ROW_NUMBER() OVER (
-           PARTITION BY s.user_id
-           ORDER BY CAST(s.score AS REAL) / MAX(s.max_score, 1) DESC, s.created_at ASC
-         ) AS rn
-         FROM scores s WHERE s.game_id = ?
-       ) t
-       JOIN users u ON u.id = t.user_id
-       WHERE t.rn = 1
-       ORDER BY CAST(t.score AS REAL) / MAX(t.max_score, 1) DESC, t.created_at ASC
-       LIMIT 15`
-    )
-    .all(id)
-    .map((r) => ({ ...(r as Record<string, unknown>) }));
+    const rows = db
+      .prepare(
+        `SELECT u.username, s.score, s.max_score, s.created_at, s.user_id
+         FROM scores s JOIN users u ON u.id = s.user_id
+         WHERE s.game_id = ?
+         ORDER BY CAST(s.score AS REAL) / MAX(s.max_score, 1) DESC, s.created_at ASC
+         LIMIT 15`
+      )
+      .all(id)
+      .map((r) => ({ ...(r as Record<string, unknown>) }));
 
-  return NextResponse.json({ scores: rows, userId: user.id });
+    return Response.json({ scores: rows, userId: user.id });
+  });
 }

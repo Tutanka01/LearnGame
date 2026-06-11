@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { Maximize, PartyPopper, X } from "lucide-react";
 import type { Game } from "@/lib/db";
 
 // Lecteur public : aucune connexion requise. C'est la page qu'ouvre un élève
@@ -40,6 +41,11 @@ export default function PublicPlayer({
     return () => window.removeEventListener("message", onMessage);
   }, [game.id, username]);
 
+  // Comptage des parties : un beacon au chargement (le serveur limite par IP).
+  useEffect(() => {
+    fetch(`/api/p/${game.public_slug}/plays`, { method: "POST" }).catch(() => {});
+  }, [game.public_slug]);
+
   function fullscreen() {
     iframeRef.current?.requestFullscreen?.();
   }
@@ -64,7 +70,7 @@ export default function PublicPlayer({
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button onClick={fullscreen} className="btn btn-ghost hidden sm:inline-flex">
-              ⛶ Plein écran
+              <Maximize size={14} aria-hidden /> Plein écran
             </button>
             {username ? (
               <Link href={`/games/${game.id}`} className="btn btn-ghost">
@@ -91,9 +97,7 @@ export default function PublicPlayer({
         {result && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 toast-in">
             <div className="card px-5 py-3.5 shadow-2xl flex items-center gap-4 border-[var(--color-accent)]/40">
-              <span className="text-2xl" aria-hidden>
-                🎉
-              </span>
+              <PartyPopper size={24} className="text-emerald-300 shrink-0" aria-hidden />
               <div className="text-sm">
                 <p className="font-semibold">
                   Terminé ! Score : {result.score}/{result.max}
@@ -116,7 +120,7 @@ export default function PublicPlayer({
                 className="text-[var(--color-ink-dim)] hover:text-white text-sm px-1"
                 aria-label="Fermer"
               >
-                ✕
+                <X size={15} />
               </button>
             </div>
           </div>

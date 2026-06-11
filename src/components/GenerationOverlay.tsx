@@ -1,51 +1,33 @@
 "use client";
 
-// UI de la génération : overlay plein écran (timeline de phases, onglets
-// Réflexion / Code / Aperçu live) + pilule flottante quand il est minimisé.
-// Toute la logique réseau vit dans GenerationProvider.
+// Surfaces globales de la génération : overlay plein écran (stepper de phases,
+// onglets Réflexion / Code / Aperçu live) + pilule flottante quand il est
+// minimisé. Toute la logique réseau vit dans GenerationProvider ; toute la
+// présentation de progression vient de GenerationPanel (source unique).
 
 import { useEffect, useRef, useState } from "react";
-import type { GenerationApi, GenerationPhase } from "./GenerationProvider";
+import { ChevronDown, PartyPopper, Play, RefreshCw, TriangleAlert } from "lucide-react";
+import type { GenerationApi } from "./GenerationProvider";
+import {
+  GenActivityBar,
+  GenCancelButton,
+  GenStatusLine,
+  GenSteps,
+  GenerationPill,
+  phaseTitle,
+} from "./GenerationPanel";
+import { formatElapsed } from "./StudioShared";
+import CodeView from "./ui/CodeView";
 
 const TIPS = [
-  "💡 Tu pourras améliorer ce jeu après coup avec le bouton 🪄 : ajouter un niveau, simplifier, corriger…",
+  "💡 Tu pourras améliorer ce jeu après coup par simple discussion : ajouter un niveau, simplifier, corriger…",
   "🌐 Un jeu partagé en public est jouable sans compte, via un lien ou un QR code.",
   "🏆 Seul ton meilleur score compte au classement — rejoue autant que tu veux.",
   "🧠 Le modèle « réfléchit » avant d'écrire le code : la conception peut prendre plusieurs minutes.",
   "📥 Chaque jeu se télécharge en fichier HTML autonome, jouable hors ligne.",
   "🎯 Plus ta demande est précise (« les jointures SQL avec des exemples »), meilleur sera le jeu.",
-  "⏳ Tu peux passer la génération en arrière-plan et explorer la bibliothèque en attendant.",
+  "🔌 La génération vit sur le serveur : même un onglet fermé ne l'arrête pas.",
 ];
-
-const STEPS: { phase: GenerationPhase; icon: string; label: string }[] = [
-  { phase: "thinking", icon: "💭", label: "Conception" },
-  { phase: "coding", icon: "⚙️", label: "Programmation" },
-  { phase: "validating", icon: "🔍", label: "Vérification" },
-];
-
-const PHASE_INDEX: Record<GenerationPhase, number> = {
-  connect: -1,
-  thinking: 0,
-  coding: 1,
-  validating: 2,
-};
-
-function formatElapsed(s: number): string {
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
-
-function progressOf(phase: GenerationPhase, counts: { reasoning: number; code: number }): number {
-  switch (phase) {
-    case "connect":
-      return 2;
-    case "thinking":
-      return 4 + Math.min((counts.reasoning / 30000) * 12, 12);
-    case "coding":
-      return 18 + Math.min(counts.code / 42000, 1) * 77;
-    case "validating":
-      return 97;
-  }
-}
 
 type Tab = "reasoning" | "code" | "preview";
 
@@ -55,7 +37,6 @@ export default function GenerationOverlay({ api }: { api: GenerationApi }) {
   const tabPinned = useRef(false);
   const [tipIndex, setTipIndex] = useState(0);
   const [previewHtml, setPreviewHtml] = useState("");
-  const codeRef = useRef<HTMLPreElement>(null);
   const reasoningRef = useRef<HTMLDivElement>(null);
 
   const running = state.status === "running";
@@ -64,7 +45,7 @@ export default function GenerationOverlay({ api }: { api: GenerationApi }) {
   useEffect(() => {
     if (!running || tabPinned.current) return;
     if (state.phase === "thinking") setTab("reasoning");
-    else if (state.phase === "coding" || state.phase === "validating") setTab("code");
+    else if (state.phase !== "connect") setTab("code");
   }, [state.phase, running]);
 
   useEffect(() => {
@@ -91,10 +72,6 @@ export default function GenerationOverlay({ api }: { api: GenerationApi }) {
   }, [running, tab, api]);
 
   useEffect(() => {
-    codeRef.current?.scrollTo({ top: codeRef.current.scrollHeight });
-  }, [state.codeTail]);
-
-  useEffect(() => {
     reasoningRef.current?.scrollTo({ top: reasoningRef.current.scrollHeight });
   }, [state.reasoningTail]);
 
@@ -109,7 +86,7 @@ export default function GenerationOverlay({ api }: { api: GenerationApi }) {
           onClick={api.openResult}
           className="card flex items-center gap-3 px-4 py-3 border-emerald-500/50 hover:border-emerald-400 transition-colors text-left"
         >
-          <span className="text-xl">🎉</span>
+          <PartyPopper size={20} className="text-emerald-300 shrink-0" aria-hidden />
           <span className="text-sm">
             <span className="font-semibold text-emerald-300 block">Ton jeu est prêt !</span>
             <span className="text-xs text-[var(--color-ink-dim)]">
@@ -122,34 +99,14 @@ export default function GenerationOverlay({ api }: { api: GenerationApi }) {
           onClick={api.restore}
           className="card flex items-center gap-3 px-4 py-3 border-red-500/50 hover:border-red-400 transition-colors text-left"
         >
-          <span className="text-xl">😕</span>
+          <TriangleAlert size={20} className="text-red-300 shrink-0" aria-hidden />
           <span className="text-sm">
             <span className="font-semibold text-red-300 block">La génération a échoué</span>
             <span className="text-xs text-[var(--color-ink-dim)]">Clique pour voir le détail</span>
           </span>
         </button>
       ) : (
-        <button
-          onClick={api.restore}
-          className="card px-4 py-3 border-[var(--color-accent)]/40 hover:border-[var(--color-accent)] transition-colors text-left w-72"
-        >
-          <span className="flex items-center gap-3">
-            <span className="text-xl animate-pulse">🎮</span>
-            <span className="text-sm min-w-0 flex-1">
-              <span className="font-medium block truncate">{state.label}</span>
-              <span className="text-xs text-[var(--color-ink-dim)]">
-                {STEPS[Math.max(PHASE_INDEX[state.phase], 0)].label}… · ⏱{" "}
-                {formatElapsed(state.elapsed)}
-              </span>
-            </span>
-          </span>
-          <span className="block h-1 mt-2 rounded-full bg-[var(--color-bg)] overflow-hidden">
-            <span
-              className="block h-full rounded-full bg-gradient-to-r from-[var(--color-accent)] to-[var(--color-accent-2)] transition-all duration-1000"
-              style={{ width: `${progressOf(state.phase, state.counts)}%` }}
-            />
-          </span>
-        </button>
+        <GenerationPill api={api} />
       );
     return <div className="fixed bottom-4 right-4 z-50 toast-in">{pill}</div>;
   }
@@ -160,7 +117,7 @@ export default function GenerationOverlay({ api }: { api: GenerationApi }) {
       <div className="w-full max-w-3xl float-in">
         {state.status === "error" ? (
           <div className="card border-red-900/60 p-8 text-center">
-            <div className="text-4xl mb-4">😕</div>
+            <TriangleAlert size={36} className="mx-auto mb-4 text-red-400" aria-hidden />
             <h2 className="text-xl font-semibold mb-2">La génération a échoué</h2>
             <p className="text-[var(--color-ink-dim)] text-sm mb-6 whitespace-pre-wrap max-w-xl mx-auto">
               {state.error}
@@ -170,79 +127,46 @@ export default function GenerationOverlay({ api }: { api: GenerationApi }) {
                 Fermer
               </button>
               <button onClick={api.retry} className="btn btn-primary px-6 py-2.5">
-                🔄 Réessayer
+                <RefreshCw size={15} aria-hidden /> Réessayer
               </button>
             </div>
           </div>
         ) : state.status === "done" ? (
           <div className="card border-emerald-700/60 p-8 text-center">
-            <div className="text-4xl mb-4">🎉</div>
+            <PartyPopper size={36} className="mx-auto mb-4 text-emerald-300" aria-hidden />
             <h2 className="text-xl font-semibold mb-2">Ton jeu est prêt !</h2>
             <p className="text-[var(--color-ink-dim)] text-sm mb-6">{state.result?.title}</p>
             <button onClick={api.openResult} className="btn btn-primary px-6 py-2.5">
-              ▶ Jouer maintenant
+              <Play size={15} aria-hidden /> Jouer maintenant
             </button>
           </div>
         ) : (
           <div className="card p-6 sm:p-8 pulse-glow">
             <div className="flex items-start justify-between gap-4 mb-5">
               <div className="flex items-center gap-4 min-w-0">
-                <div className="text-4xl animate-bounce">🎮</div>
+                <div className="text-4xl animate-bounce" aria-hidden>
+                  🎮
+                </div>
                 <div className="min-w-0">
                   <h2 className="text-lg sm:text-xl font-semibold">
-                    {state.request && "gameId" in state.request
-                      ? "Amélioration de ton jeu…"
-                      : "Création de ton jeu…"}
+                    {state.mode === "edit" ? "Amélioration de ton jeu…" : "Création de ton jeu…"}
                   </h2>
                   <p className="text-sm text-[var(--color-ink-dim)] truncate">{state.label}</p>
                 </div>
               </div>
               <span className="font-mono text-sm text-[var(--color-ink-dim)] shrink-0 tabular-nums">
-                ⏱ {formatElapsed(state.elapsed)}
+                {formatElapsed(state.elapsed)}
               </span>
             </div>
 
-            {/* Timeline des phases */}
-            <ol className="flex items-center gap-2 mb-4" aria-label="Étapes de la génération">
-              {STEPS.map((step, i) => {
-                const current = PHASE_INDEX[state.phase];
-                const stepState = i < current ? "done" : i === current ? "active" : "pending";
-                return (
-                  <li key={step.phase} className="flex items-center gap-2 flex-1 min-w-0">
-                    <span
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-                        stepState === "active"
-                          ? "bg-[var(--color-accent)]/20 text-[var(--color-accent-strong)] border border-[var(--color-accent)]/50"
-                          : stepState === "done"
-                            ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
-                            : "text-[var(--color-ink-dim)] border border-[var(--color-border)]"
-                      }`}
-                    >
-                      <span>{stepState === "done" ? "✓" : step.icon}</span>
-                      <span className="hidden sm:inline">{step.label}</span>
-                    </span>
-                    {i < STEPS.length - 1 && (
-                      <span
-                        className={`h-px flex-1 ${
-                          i < current ? "bg-emerald-500/50" : "bg-[var(--color-border)]"
-                        }`}
-                      />
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
-
-            <div className="h-1.5 rounded-full bg-[var(--color-bg)] overflow-hidden mb-1.5">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-[var(--color-accent)] to-[var(--color-accent-2)] transition-all duration-1000"
-                style={{ width: `${progressOf(state.phase, state.counts)}%` }}
-              />
+            <div className="mb-3">
+              <GenSteps state={state} />
             </div>
-            <p className="text-[11px] text-[var(--color-ink-dim)] mb-4 truncate">
-              {state.statusMsg}
-              {state.attempt > 1 && ` · tentative ${state.attempt}`}
+            <GenActivityBar className="mb-1.5 h-1.5" />
+            <p className="sr-only" aria-live="polite">
+              {phaseTitle(state)}
             </p>
+            <GenStatusLine state={state} className="mb-4" />
 
             {/* Onglets Réflexion / Code / Aperçu */}
             <div className="flex items-center gap-1 mb-2 text-xs" role="tablist">
@@ -285,12 +209,9 @@ export default function GenerationOverlay({ api }: { api: GenerationApi }) {
               </div>
             )}
             {tab === "code" && (
-              <pre
-                ref={codeRef}
-                className="code-stream h-52 overflow-y-auto rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] p-4 text-[11px] leading-relaxed text-emerald-300/80 font-mono whitespace-pre-wrap break-all"
-              >
-                {state.codeTail || "Le code arrivera ici dès que le modèle aura fini de réfléchir…"}
-              </pre>
+              <div className="h-52 rounded-xl overflow-hidden border border-[var(--color-border)] bg-[var(--color-bg)]">
+                <CodeView code={state.codeTail} streaming />
+              </div>
             )}
             {tab === "preview" && (
               <div className="h-52 rounded-xl overflow-hidden border border-[var(--color-border)] bg-white relative">
@@ -323,16 +244,9 @@ export default function GenerationOverlay({ api }: { api: GenerationApi }) {
               </p>
               <div className="flex items-center gap-2">
                 <button onClick={api.minimize} className="btn btn-ghost text-xs">
-                  ⬇ Continuer en arrière-plan
+                  <ChevronDown size={14} aria-hidden /> Continuer en arrière-plan
                 </button>
-                <button
-                  onClick={() => {
-                    if (confirm("Abandonner cette génération ?")) api.cancel();
-                  }}
-                  className="text-xs text-slate-400 hover:text-white transition-colors px-2 py-1"
-                >
-                  Annuler
-                </button>
+                <GenCancelButton onCancel={api.cancel} className="px-2 py-1 text-xs" />
               </div>
             </div>
 

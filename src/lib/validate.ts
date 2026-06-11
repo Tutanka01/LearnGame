@@ -17,13 +17,18 @@ export function validateGameHtml(html: string): string | null {
     return "le document ne se termine pas par </html> (réponse tronquée)";
   }
 
-  const openCount = (html.match(/<script\b/gi) || []).length;
-  const blocks = [...html.matchAll(SCRIPT_BLOCK)];
+  // Les commentaires HTML et les blocs <script>…</script> COMPLETS sont retirés
+  // avant de chercher une ouverture orpheline : un "<script" dans une chaîne JS
+  // (à l'intérieur d'un bloc complet) ne déclenche plus de faux rejet, alors
+  // qu'une vraie balise jamais fermée reste détectée — comme dans le navigateur.
+  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
+  const blocks = [...withoutComments.matchAll(SCRIPT_BLOCK)];
+  const residue = withoutComments.replace(SCRIPT_BLOCK, "");
 
-  if (openCount === 0) {
+  if (blocks.length === 0 && !/<script\b/i.test(residue)) {
     return "le document ne contient aucun <script> : le jeu n'a pas de logique";
   }
-  if (blocks.length < openCount) {
+  if (/<script\b/i.test(residue)) {
     return "une balise <script> n'est jamais fermée (réponse tronquée)";
   }
 
