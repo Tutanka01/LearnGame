@@ -3,6 +3,7 @@
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import Segmented from "@/components/ui/Segmented";
 
 const FEATURES = [
   ["✨", "Décris un concept, l'IA crée un jeu sur mesure"],
@@ -49,39 +50,35 @@ export default function LoginPage() {
     <main className="min-h-screen flex items-center justify-center p-6">
       <div className="w-full max-w-md float-in">
         <div className="text-center mb-8">
-          <div className="text-5xl mb-3" aria-hidden>
+          <div
+            className="mx-auto mb-4 w-16 h-16 rounded-2xl grid place-items-center text-3xl bg-[var(--color-surface-2)] border border-[var(--color-border)] shadow-[var(--shadow-glow)] pulse-glow"
+            aria-hidden
+          >
             🎮
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">
+          <h1 className="font-display text-4xl">
             Learn<span className="text-[var(--color-accent)]">Game</span>
           </h1>
-          <p className="text-[var(--color-ink-dim)] mt-2">
+          <p className="text-[var(--color-ink-dim)] mt-2.5">
             Décris ce que tu veux apprendre, joue pour le maîtriser.
           </p>
         </div>
 
-        <div className="card p-8 shadow-2xl">
-          <div className="flex rounded-xl bg-[var(--color-bg)] p-1 mb-6" role="tablist">
-            {(["login", "register"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                role="tab"
-                aria-selected={mode === m}
-                onClick={() => {
-                  setMode(m);
-                  setError("");
-                }}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  mode === m
-                    ? "bg-[var(--color-accent)] text-white"
-                    : "text-[var(--color-ink-dim)] hover:text-white"
-                }`}
-              >
-                {m === "login" ? "Connexion" : "Inscription"}
-              </button>
-            ))}
-          </div>
+        <div className="card p-8 shadow-[var(--shadow-lg)]">
+          <Segmented
+            className="w-full mb-6 [&_.seg-item]:flex-1"
+            ariaLabel="Connexion ou inscription"
+            tone="accent"
+            value={mode}
+            onChange={(m) => {
+              setMode(m);
+              setError("");
+            }}
+            options={[
+              { value: "login", label: "Connexion" },
+              { value: "register", label: "Inscription" },
+            ]}
+          />
 
           <form onSubmit={submit} className="space-y-4">
             <div>

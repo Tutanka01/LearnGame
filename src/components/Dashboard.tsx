@@ -20,6 +20,7 @@ import { useToast } from "./ui/ToastProvider";
 import { useConfirm } from "./ui/ConfirmDialog";
 import { apiFetch, HttpError } from "@/lib/clientApi";
 import CommandPalette, { PaletteCommand } from "./ui/CommandPalette";
+import Segmented from "./ui/Segmented";
 
 interface GameSummary {
   id: string;
@@ -275,7 +276,7 @@ export default function Dashboard({ username }: { username: string }) {
 
       <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]/60 backdrop-blur-md sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between gap-3">
-          <h1 className="text-lg font-bold tracking-tight shrink-0">
+          <h1 className="font-display text-xl shrink-0">
             🎮 Learn<span className="text-[var(--color-accent)]">Game</span>
           </h1>
           <div className="flex items-center gap-3 sm:gap-4 text-sm min-w-0">
@@ -311,14 +312,17 @@ export default function Dashboard({ username }: { username: string }) {
       <div className="max-w-5xl mx-auto px-6 py-12">
         {/* --- Zone de création --- */}
         <section className="text-center mb-16 float-in">
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-3 text-balance">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 mb-5 rounded-full text-xs font-medium text-[var(--color-accent-strong)] bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/25">
+            <Sparkles size={12} aria-hidden /> Généré par IA, jouable en un instant
+          </span>
+          <h2 className="font-display text-4xl sm:text-5xl mb-4 text-balance leading-[1.05]">
             Qu&apos;est-ce que tu veux{" "}
-            <span className="bg-gradient-to-r from-[var(--color-accent-strong)] to-[var(--color-accent-2)] bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-[var(--color-accent-strong)] via-[var(--color-accent-spark)] to-[var(--color-accent-2)] bg-clip-text text-transparent">
               apprendre
             </span>{" "}
             aujourd&apos;hui ?
           </h2>
-          <p className="text-[var(--color-ink-dim)] mb-8">
+          <p className="text-[var(--color-ink-dim)] mb-8 text-base">
             Décris un concept, l&apos;IA crée un jeu sur mesure pour te l&apos;enseigner.
           </p>
 
@@ -396,7 +400,7 @@ export default function Dashboard({ username }: { username: string }) {
         {/* --- Bibliothèque --- */}
         <section>
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-            <h3 className="text-xl font-semibold shrink-0">📚 Bibliothèque de jeux</h3>
+            <h3 className="font-display text-2xl shrink-0">📚 Bibliothèque de jeux</h3>
             <div className="relative flex-1 min-w-48 max-w-sm">
               <Search
                 size={14}
@@ -418,53 +422,29 @@ export default function Dashboard({ username }: { username: string }) {
           </div>
 
           <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
-            <div
-              className="flex rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] p-0.5 text-xs"
-              role="tablist"
-              aria-label="Filtrer les jeux"
-            >
-              {(
-                [
-                  ["tous", "Tous"],
-                  ["à-faire", "À faire"],
-                  ["miens", "Mes jeux"],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  onClick={() => setFilter(value)}
-                  role="tab"
-                  aria-selected={filter === value}
-                  className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
-                    filter === value
-                      ? "bg-[var(--color-accent)] text-white"
-                      : "text-[var(--color-ink-dim)] hover:text-white"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div className="flex rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] p-0.5 text-xs">
-              {(
-                [
-                  ["récents", "🕒 Récents"],
-                  ["populaires", "🔥 Populaires"],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  onClick={() => setSort(value)}
-                  className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
-                    sort === value
-                      ? "bg-[var(--color-surface-2)] text-white"
-                      : "text-[var(--color-ink-dim)] hover:text-white"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <Segmented
+              ariaLabel="Filtrer les jeux"
+              size="sm"
+              tone="accent"
+              value={filter}
+              onChange={setFilter}
+              options={[
+                { value: "tous", label: "Tous" },
+                { value: "à-faire", label: "À faire" },
+                { value: "miens", label: "Mes jeux" },
+              ]}
+            />
+            <Segmented
+              ariaLabel="Trier les jeux"
+              size="sm"
+              role="radiogroup"
+              value={sort}
+              onChange={setSort}
+              options={[
+                { value: "récents", label: "🕒 Récents" },
+                { value: "populaires", label: "🔥 Populaires" },
+              ]}
+            />
           </div>
 
           {!loaded ? (

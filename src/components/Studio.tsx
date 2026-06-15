@@ -19,6 +19,7 @@ import {
   Maximize,
   MessageSquare,
   Monitor,
+  MoreHorizontal,
   Pencil,
   RotateCw,
   Send,
@@ -32,6 +33,7 @@ import { ErrorBubble, LiveStream, formatWhen, renderInlineMarkdown } from "./Stu
 import { GenerationBubble } from "./GenerationPanel";
 import ShareModal from "./ShareModal";
 import CodeView from "./ui/CodeView";
+import Segmented from "./ui/Segmented";
 import VersionsTimeline, { VersionEntry } from "./VersionsTimeline";
 import { useToast } from "./ui/ToastProvider";
 import { useConfirm } from "./ui/ConfirmDialog";
@@ -101,6 +103,7 @@ export default function Studio({
 
   const [sidePanel, setSidePanel] = useState<"none" | "board" | "history">("none");
   const [shareOpen, setShareOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [scores, setScores] = useState<ScoreRow[]>([]);
   const [myId, setMyId] = useState<number | null>(null);
 
@@ -351,26 +354,18 @@ export default function Studio({
         <Link href="/" className="btn btn-ghost text-xs px-2.5 py-1.5" aria-label="Retour">
           <ArrowLeft size={14} />
         </Link>
-        <div className="flex flex-1 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] p-0.5 text-xs">
-          {(
-            [
-              ["chat", "Discussion", MessageSquare],
-              ["preview", "Jeu", Gamepad2],
-            ] as const
-          ).map(([value, label, Icon]) => (
-            <button
-              key={value}
-              onClick={() => setMobilePane(value)}
-              className={`flex-1 px-3 py-2 rounded-md font-medium transition-colors inline-flex items-center justify-center gap-1.5 ${
-                mobilePane === value
-                  ? "bg-[var(--color-accent)] text-white"
-                  : "text-[var(--color-ink-dim)]"
-              }`}
-            >
-              <Icon size={13} aria-hidden /> {label}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          className="flex-1 [&_.seg-item]:flex-1"
+          ariaLabel="Discussion ou jeu"
+          size="sm"
+          tone="accent"
+          value={mobilePane}
+          onChange={setMobilePane}
+          options={[
+            { value: "chat", label: "Discussion", icon: MessageSquare },
+            { value: "preview", label: "Jeu", icon: Gamepad2 },
+          ]}
+        />
       </div>
 
       <PanelGroup direction="horizontal" autoSaveId="lg-studio-panels" className="flex-1 min-h-0">
@@ -417,7 +412,7 @@ export default function Studio({
                     </button>
                   </div>
                 ) : (
-                  <h1 className="font-semibold text-sm truncate flex items-center gap-2 group">
+                  <h1 className="font-display text-base truncate flex items-center gap-2 group">
                     <span className="truncate">{game.title || game.topic}</span>
                     {Boolean(game.is_public) && (
                       <span
@@ -620,71 +615,54 @@ export default function Studio({
           <section className="flex flex-1 flex-col w-full min-h-0">
             {/* Barre d'outils */}
             <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface)]/60 flex-wrap">
-              <div className="flex rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] p-0.5 text-xs">
-                {(
-                  [
-                    ["preview", "Aperçu", Gamepad2],
-                    ["code", "Code", Code2],
-                  ] as const
-                ).map(([value, label, Icon]) => (
-                  <button
-                    key={value}
-                    onClick={() => setTab(value)}
-                    className={`px-3 py-1.5 rounded-md font-medium transition-colors inline-flex items-center gap-1.5 ${
-                      tab === value
-                        ? "bg-[var(--color-surface-2)] text-white"
-                        : "text-[var(--color-ink-dim)] hover:text-white"
-                    }`}
-                  >
-                    <Icon size={13} aria-hidden /> {label}
-                  </button>
-                ))}
-              </div>
+              <Segmented
+                size="sm"
+                ariaLabel="Aperçu ou code"
+                role="radiogroup"
+                value={tab}
+                onChange={setTab}
+                options={[
+                  { value: "preview", label: "Aperçu", icon: Gamepad2 },
+                  { value: "code", label: "Code", icon: Code2 },
+                ]}
+              />
 
               {tab === "preview" && !busy && (
-                <div className="hidden sm:flex rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] p-0.5 text-xs">
-                  {(
-                    [
-                      ["desktop", Monitor, "Vue ordinateur"],
-                      ["mobile", Smartphone, "Vue téléphone"],
-                    ] as const
-                  ).map(([value, Icon, title]) => (
-                    <button
-                      key={value}
-                      onClick={() => setDevice(value)}
-                      title={title}
-                      aria-label={title}
-                      className={`px-2.5 py-1.5 rounded-md transition-colors ${
-                        device === value
-                          ? "bg-[var(--color-surface-2)] text-white"
-                          : "text-[var(--color-ink-dim)] hover:text-white"
-                      }`}
-                    >
-                      <Icon size={13} aria-hidden />
-                    </button>
-                  ))}
+                <div className="hidden sm:block">
+                  <Segmented
+                    size="sm"
+                    ariaLabel="Appareil de prévisualisation"
+                    role="radiogroup"
+                    value={device}
+                    onChange={setDevice}
+                    options={[
+                      { value: "desktop", icon: Monitor, title: "Vue ordinateur" },
+                      { value: "mobile", icon: Smartphone, title: "Vue téléphone" },
+                    ]}
+                  />
                 </div>
               )}
 
-              <span
-                className="px-2 py-1 rounded-full bg-[var(--color-bg)] border border-[var(--color-border)] text-[10px] font-semibold text-[var(--color-ink-dim)]"
-                title={`${versions.length} version${versions.length > 1 ? "s" : ""} archivée${versions.length > 1 ? "s" : ""}`}
-              >
-                v{game.version}
-              </span>
-
-              {busy && (
-                <span className="px-2 py-1 rounded-full bg-[var(--color-accent)]/15 border border-[var(--color-accent)]/40 text-[10px] font-semibold text-[var(--color-accent-strong)]">
-                  ✍️ v{game.version + 1} en écriture…
+              {busy ? (
+                <span className="px-2.5 py-1 rounded-full bg-[var(--color-accent)]/15 border border-[var(--color-accent)]/40 text-[10px] font-semibold text-[var(--color-accent-strong)] inline-flex items-center gap-1.5">
+                  <span className="typing-dot" /> v{game.version + 1} en écriture…
+                </span>
+              ) : (
+                <span
+                  className="px-2.5 py-1 rounded-full bg-[var(--color-bg)] border border-[var(--color-border)] text-[10px] font-semibold text-[var(--color-ink-dim)] tabular"
+                  title={`${versions.length} version${versions.length > 1 ? "s" : ""} archivée${versions.length > 1 ? "s" : ""}`}
+                >
+                  v{game.version}
                 </span>
               )}
 
               <div className="flex-1" />
 
+              {/* Actions primaires : repères du Studio, toujours visibles. */}
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setReloadKey((k) => k + 1)}
-                  className={toolButton}
+                  className={`${toolButton} px-2`}
                   title="Recharger le jeu"
                   aria-label="Recharger le jeu"
                 >
@@ -693,68 +671,103 @@ export default function Studio({
                 {isOwner && (
                   <button
                     onClick={() => setSidePanel((p) => (p === "history" ? "none" : "history"))}
-                    className={`btn px-2.5 py-1.5 text-xs ${
+                    className={`btn btn-sm ${
                       sidePanel === "history"
                         ? "bg-[var(--color-accent)]/15 text-[var(--color-accent-strong)] border-[var(--color-accent)]/40"
                         : "btn-ghost"
                     }`}
                     aria-pressed={sidePanel === "history"}
                     title="Historique des versions"
-                    aria-label="Historique des versions"
                   >
                     <History size={14} />
-                    <span className="hidden xl:inline"> Historique</span>
+                    <span className="hidden xl:inline">Historique</span>
                   </button>
                 )}
                 <button
                   onClick={() => setSidePanel((p) => (p === "board" ? "none" : "board"))}
-                  className={`btn px-2.5 py-1.5 text-xs ${
+                  className={`btn btn-sm ${
                     sidePanel === "board"
                       ? "bg-amber-400/15 text-amber-300 border-amber-400/40"
                       : "btn-ghost"
                   }`}
                   aria-pressed={sidePanel === "board"}
                   title="Classement"
-                  aria-label="Classement"
                 >
                   <Trophy size={14} />
-                  <span className="hidden xl:inline"> Classement</span>
+                  <span className="hidden xl:inline">Classement</span>
                 </button>
                 <button
                   onClick={() => setShareOpen(true)}
-                  className={toolButton}
-                  title="Partager"
-                  aria-label="Partager"
+                  className="btn btn-primary btn-sm"
+                  title="Partager ce jeu"
                 >
                   <Globe size={14} />
-                  <span className="hidden xl:inline"> Partager</span>
+                  <span className="hidden sm:inline">Partager</span>
                 </button>
-                <button
-                  onClick={fullscreen}
-                  className={`${toolButton} hidden sm:inline-flex`}
-                  title="Plein écran"
-                  aria-label="Plein écran"
-                >
-                  <Maximize size={14} />
-                </button>
-                <button
-                  onClick={downloadHtml}
-                  className={`${toolButton} hidden sm:inline-flex`}
-                  title="Télécharger le jeu (HTML autonome)"
-                  aria-label="Télécharger le jeu"
-                >
-                  <Download size={14} />
-                </button>
-                {isOwner && (
+
+                {/* Actions secondaires : regroupées dans un menu de débordement. */}
+                <div className="relative">
                   <button
-                    onClick={deleteGame}
-                    className="btn btn-danger px-2.5 py-1.5 text-xs"
-                    title="Supprimer ce jeu"
-                    aria-label="Supprimer ce jeu"
+                    onClick={() => setMenuOpen((o) => !o)}
+                    className={`${toolButton} px-2 ${menuOpen ? "bg-[var(--color-surface-3)] text-white" : ""}`}
+                    title="Plus d'actions"
+                    aria-label="Plus d'actions"
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpen}
                   >
-                    <Trash2 size={14} />
+                    <MoreHorizontal size={16} />
                   </button>
-                )}
+                  {menuOpen && (
+                    <>
+                      <button
+                        className="fixed inset-0 z-40 cursor-default"
+                        aria-hidden
+                        tabIndex={-1}
+                        onClick={() => setMenuOpen(false)}
+                      />
+                      <div
+                        role="menu"
+                        className="absolute right-0 top-full mt-1.5 z-50 w-52 card p-1.5 shadow-[var(--shadow-lg)] float-in"
+                      >
+                        <button
+                          role="menuitem"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            fullscreen();
+                          }}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-[var(--color-ink-dim)] hover:text-white hover:bg-[var(--color-surface-2)] transition-colors"
+                        >
+                          <Maximize size={15} /> Plein écran
+                        </button>
+                        <button
+                          role="menuitem"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            downloadHtml();
+                          }}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-[var(--color-ink-dim)] hover:text-white hover:bg-[var(--color-surface-2)] transition-colors"
+                        >
+                          <Download size={15} /> Télécharger le HTML
+                        </button>
+                        {isOwner && (
+                          <>
+                            <div className="my-1 h-px bg-[var(--color-border)]" />
+                            <button
+                              role="menuitem"
+                              onClick={() => {
+                                setMenuOpen(false);
+                                deleteGame();
+                              }}
+                              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-red-400 hover:text-red-300 hover:bg-red-950/40 transition-colors"
+                            >
+                              <Trash2 size={15} /> Supprimer le jeu
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
 

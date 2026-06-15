@@ -1,11 +1,21 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import GenerationProvider from "@/components/GenerationProvider";
 import ToastProvider from "@/components/ui/ToastProvider";
 import ConfirmProvider from "@/components/ui/ConfirmDialog";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-inter" });
+// Couples typographiques : un grotesque de titrage à fort caractère (Bricolage)
+// pour la marque et les en-têtes, un corps de texte d'interface très lisible
+// (Geist), et un mono pour le code et les compteurs (timers, scores).
+const display = Bricolage_Grotesque({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-display",
+  weight: ["500", "600", "700", "800"],
+});
+const sans = Geist({ subsets: ["latin"], display: "swap", variable: "--font-sans" });
+const mono = Geist_Mono({ subsets: ["latin"], display: "swap", variable: "--font-mono" });
 
 export const metadata: Metadata = {
   title: {
@@ -18,12 +28,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0c13",
+  themeColor: "#080910",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr" className={inter.variable}>
+    <html lang="fr" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
       <body className="antialiased app-bg">
         <ToastProvider>
           <ConfirmProvider>

@@ -1,17 +1,43 @@
 @import "tailwindcss";
 
+/* ============================================================================
+   LearnGame — Design system « Atelier nocturne »
+   Thème sombre atmosphérique, accent violet + teal, typographie à caractère.
+   Les noms de classes (.btn, .card, .field, .chat-*, etc.) sont stables :
+   les composants en dépendent. Ce fichier en élève l'exécution.
+   ========================================================================== */
+
 @theme {
-  --color-bg: #0a0c13;
-  --color-surface: #11141e;
-  --color-surface-2: #181d2b;
-  --color-border: #242b3d;
-  --color-border-strong: #344058;
+  /* — Profondeur : un near-black légèrement froid + 4 niveaux d'élévation — */
+  --color-bg: #080910;
+  --color-surface: #0f1119;
+  --color-surface-2: #161a26;
+  --color-surface-3: #1d2231;
+  --color-border: #232a3b;
+  --color-border-strong: #38415a;
+
+  /* — Marque : violet électrique + teal, avec une étincelle fuchsia — */
   --color-accent: #8b7cff;
-  --color-accent-strong: #a395ff;
+  --color-accent-strong: #a99dff;
+  --color-accent-deep: #6d5bf5;
   --color-accent-2: #2dd4bf;
-  --color-ink: #eef0f8;
-  --color-ink-dim: #98a0b8;
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --color-accent-spark: #d97cff;
+
+  /* — Encre — */
+  --color-ink: #eceefb;
+  --color-ink-dim: #99a1bd;
+  --color-ink-faint: #5b6480;
+
+  /* — Typographie — */
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: var(--font-display), var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* — Ombres : douces, colorées, jamais plates — */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 24px -8px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 24px 60px -16px rgba(0, 0, 0, 0.7);
+  --shadow-glow: 0 8px 32px -6px rgba(139, 124, 255, 0.45);
 }
 
 html,
@@ -19,48 +45,84 @@ body {
   background: var(--color-bg);
   color: var(--color-ink);
   min-height: 100%;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  font-family: var(--font-sans);
+  font-feature-settings: "cv01", "ss03";
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
 
+/* Titrage : la police d'affichage, serrée et assumée. */
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
 ::selection {
   background: rgba(139, 124, 255, 0.4);
+  color: #fff;
 }
 
 /* --- Accessibilité : anneau de focus visible au clavier uniquement --- */
 :focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
-/* --- Fond ambiant : double halo + grain subtil, fixe au scroll --- */
+/* ============================================================================
+   Fond ambiant : maillage de halos colorés + grain fin fixe.
+   Le grain vit derrière le contenu (z 0, sans interaction) : il donne du
+   « matériau » au noir là où aucune surface ne le recouvre.
+   ========================================================================== */
 .app-bg {
+  position: relative;
   background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(139, 124, 255, 0.13), transparent 60%),
-    radial-gradient(ellipse 60% 40% at 90% 110%, rgba(45, 212, 191, 0.07), transparent 60%),
+    radial-gradient(ellipse 70% 45% at 50% -8%, rgba(139, 124, 255, 0.16), transparent 60%),
+    radial-gradient(ellipse 50% 50% at 95% 8%, rgba(217, 124, 255, 0.08), transparent 55%),
+    radial-gradient(ellipse 55% 40% at 5% 100%, rgba(45, 212, 191, 0.08), transparent 60%),
     var(--color-bg);
   background-attachment: fixed;
 }
+.app-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.app-bg > * {
+  position: relative;
+  z-index: 1;
+}
 
-/* --- Boutons : trois variantes cohérentes dans toute l'app --- */
+/* ============================================================================
+   Boutons — trois variantes cohérentes + un reflet qui balaie le primaire.
+   ========================================================================== */
 .btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
-  border-radius: 0.75rem;
+  border-radius: 0.7rem;
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 550;
   padding: 0.5rem 0.9rem;
   border: 1px solid transparent;
+  overflow: hidden;
   transition:
-    background-color 0.15s ease,
-    border-color 0.15s ease,
-    color 0.15s ease,
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
     transform 0.1s ease,
-    box-shadow 0.2s ease;
+    box-shadow 0.22s ease,
+    filter 0.16s ease;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -72,83 +134,161 @@ body {
   cursor: not-allowed;
   transform: none;
 }
+.btn-sm {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  border-radius: 0.6rem;
+}
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--color-accent), #6d5bf5);
-  color: white;
-  font-weight: 600;
+  background: linear-gradient(135deg, var(--color-accent-strong), var(--color-accent) 45%, var(--color-accent-deep));
+  color: #fff;
+  font-weight: 650;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.15) inset,
-    0 4px 16px rgba(139, 124, 255, 0.3);
+    0 1px 0 rgba(255, 255, 255, 0.22) inset,
+    var(--shadow-glow);
+}
+/* Reflet : un trait clair qui balaie le bouton au survol. */
+.btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.28) 48%, transparent 66%);
+  transform: translateX(-130%);
+  transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .btn-primary:hover:not(:disabled) {
+  filter: brightness(1.07);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.2) inset,
-    0 6px 24px rgba(139, 124, 255, 0.45);
-  filter: brightness(1.08);
+    0 1px 0 rgba(255, 255, 255, 0.28) inset,
+    0 10px 36px -8px rgba(139, 124, 255, 0.6);
+}
+.btn-primary:hover:not(:disabled)::after {
+  transform: translateX(130%);
 }
 
 .btn-ghost {
-  background: var(--color-surface);
+  background: var(--color-surface-2);
   border-color: var(--color-border);
   color: var(--color-ink-dim);
 }
 .btn-ghost:hover:not(:disabled) {
   color: var(--color-ink);
   border-color: var(--color-border-strong);
-  background: var(--color-surface-2);
+  background: var(--color-surface-3);
 }
 
 .btn-danger {
-  background: var(--color-surface);
+  background: var(--color-surface-2);
   border-color: var(--color-border);
   color: #f87171;
 }
 .btn-danger:hover:not(:disabled) {
   border-color: rgba(248, 113, 113, 0.5);
-  background: rgba(127, 29, 29, 0.25);
+  background: rgba(127, 29, 29, 0.28);
+  color: #fca5a5;
 }
 
-/* --- Cartes --- */
+/* ============================================================================
+   Cartes — surface élevée + filet lumineux en haut (le « premium » discret).
+   ========================================================================== */
 .card {
-  background: var(--color-surface);
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 40%),
+    var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 1rem;
+  box-shadow: var(--shadow-sm);
 }
 
 .card-interactive {
   transition:
-    transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1),
     border-color 0.2s ease,
-    box-shadow 0.25s ease;
+    box-shadow 0.28s ease;
 }
 .card-interactive:hover {
-  transform: translateY(-3px);
+  transform: translateY(-4px);
   border-color: rgba(139, 124, 255, 0.55);
   box-shadow:
-    0 12px 32px -8px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(139, 124, 255, 0.15);
+    var(--shadow-lg),
+    0 0 0 1px rgba(139, 124, 255, 0.18),
+    0 0 40px -12px rgba(139, 124, 255, 0.35);
 }
 
-/* --- Champs de saisie --- */
+/* ============================================================================
+   Champs de saisie.
+   ========================================================================== */
 .field {
   width: 100%;
   background: var(--color-bg);
   border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
+  border-radius: 0.7rem;
   padding: 0.625rem 1rem;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 .field::placeholder {
-  color: #5b6478;
+  color: var(--color-ink-faint);
 }
 .field:focus {
   outline: none;
   border-color: var(--color-accent);
+  background: var(--color-surface);
   box-shadow: 0 0 0 3px rgba(139, 124, 255, 0.18);
 }
 
-/* --- Animations --- */
+/* ============================================================================
+   Segmented control — piste + pouce glissant (le composant calcule l'offset).
+   ========================================================================== */
+.seg {
+  position: relative;
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 0.7rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+}
+.seg-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 0.5rem;
+  transition: transform 0.28s cubic-bezier(0.3, 0.9, 0.25, 1), width 0.28s cubic-bezier(0.3, 0.9, 0.25, 1);
+  will-change: transform, width;
+}
+.seg-thumb-accent {
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-deep));
+  box-shadow: 0 4px 14px -4px rgba(139, 124, 255, 0.6);
+}
+.seg-thumb-subtle {
+  background: var(--color-surface-3);
+  border: 1px solid var(--color-border-strong);
+}
+.seg-item {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  font-weight: 550;
+  white-space: nowrap;
+  border-radius: 0.5rem;
+  color: var(--color-ink-dim);
+  transition: color 0.2s ease;
+  cursor: pointer;
+}
+.seg-item:hover:not([data-active="true"]) {
+  color: var(--color-ink);
+}
+.seg-item[data-active="true"] {
+  color: #fff;
+}
+
+/* ============================================================================
+   Animations.
+   ========================================================================== */
 @keyframes float-in {
   from {
     opacity: 0;
@@ -159,7 +299,6 @@ body {
     transform: translateY(0);
   }
 }
-
 @keyframes pulse-glow {
   0%,
   100% {
@@ -169,7 +308,6 @@ body {
     box-shadow: 0 0 48px rgba(139, 124, 255, 0.55);
   }
 }
-
 @keyframes shimmer {
   from {
     background-position: 200% 0;
@@ -178,7 +316,6 @@ body {
     background-position: -200% 0;
   }
 }
-
 @keyframes toast-in {
   from {
     opacity: 0;
@@ -193,11 +330,9 @@ body {
 .float-in {
   animation: float-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
-
 .pulse-glow {
   animation: pulse-glow 2.2s ease-in-out infinite;
 }
-
 .toast-in {
   animation: toast-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
@@ -227,7 +362,7 @@ body {
   border-radius: 1rem;
 }
 
-/* Respecte la préférence "réduire les animations" */
+/* Respecte la préférence « réduire les animations » */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -238,22 +373,25 @@ body {
   }
 }
 
-/* --- Studio : bulles de chat --- */
+/* ============================================================================
+   Studio : bulles de chat.
+   ========================================================================== */
 .chat-user {
-  background: linear-gradient(135deg, rgba(139, 124, 255, 0.22), rgba(109, 91, 245, 0.18));
-  border: 1px solid rgba(139, 124, 255, 0.35);
+  background: linear-gradient(135deg, rgba(139, 124, 255, 0.24), rgba(109, 91, 245, 0.16));
+  border: 1px solid rgba(139, 124, 255, 0.38);
   border-radius: 1rem;
   border-bottom-right-radius: 0.25rem;
 }
-
 .chat-ai {
-  background: var(--color-surface);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 50%),
+    var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 1rem;
   border-bottom-left-radius: 0.25rem;
 }
 
-/* Indicateur "l'IA écrit" : trois points qui dansent */
+/* Indicateur « l'IA écrit » : trois points qui dansent */
 @keyframes typing-bounce {
   0%,
   60%,
@@ -266,7 +404,6 @@ body {
     transform: translateY(-3px);
   }
 }
-
 .typing-dot {
   width: 5px;
   height: 5px;
@@ -307,8 +444,8 @@ body {
 
 /* --- Poignée de redimensionnement du Studio --- */
 .resize-handle {
-  width: 6px;
-  margin: 0 -2px;
+  width: 8px;
+  margin: 0 -3px;
   position: relative;
   z-index: 10;
   cursor: col-resize;
@@ -382,7 +519,7 @@ body {
   line-height: 1.6;
 }
 .code-shiki code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 
 /* --- Aperçu de jeu au survol des cartes de la bibliothèque --- */
@@ -407,4 +544,8 @@ body {
 .thin-scroll::-webkit-scrollbar-thumb {
   background: #2c3550;
   border-radius: 3px;
+}
+.code-stream::-webkit-scrollbar-thumb:hover,
+.thin-scroll::-webkit-scrollbar-thumb:hover {
+  background: #3a4566;
 }
