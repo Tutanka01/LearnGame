@@ -91,9 +91,14 @@ export function GenSteps({ state, compact = false }: { state: GenerationState; c
         const status = i < current ? "done" : i === current ? "active" : "pending";
         const Icon = status === "done" ? CheckCircle2 : status === "active" ? Loader2 : step.icon;
         return (
-          <li key={step.label} className="flex items-center gap-1.5 flex-1 min-w-0">
+          <li
+            key={step.label}
+            className={`flex items-center gap-1.5 min-w-0 ${
+              status === "active" ? "flex-[2]" : "flex-1"
+            }`}
+          >
             <span
-              className={`flex items-center gap-1.5 rounded-full font-medium whitespace-nowrap transition-colors ${
+              className={`flex items-center gap-1.5 rounded-full font-medium transition-colors min-w-0 ${
                 compact ? "px-2 py-1 text-[10px]" : "px-2.5 py-1.5 text-xs"
               } ${
                 status === "active"
@@ -105,10 +110,18 @@ export function GenSteps({ state, compact = false }: { state: GenerationState; c
             >
               <Icon
                 size={compact ? 11 : 13}
-                className={status === "active" ? "animate-spin" : ""}
+                className={`shrink-0 ${status === "active" ? "animate-spin" : ""}`}
                 aria-hidden
               />
-              <span className={compact ? "hidden md:inline" : "hidden sm:inline"}>{step.label}</span>
+              {/* Libellé : seulement l'étape active en compact (5 étapes ne
+                  tiennent pas côte à côte) ; toutes dès sm en plein écran. */}
+              <span
+                className={`truncate ${
+                  status === "active" ? "inline" : compact ? "hidden" : "hidden sm:inline"
+                }`}
+              >
+                {step.label}
+              </span>
             </span>
             {i < steps.length - 1 && (
               <span
