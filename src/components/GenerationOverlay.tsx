@@ -42,9 +42,16 @@ export default function GenerationOverlay({ api }: { api: GenerationApi }) {
   const running = state.status === "running";
 
   // L'onglet suit la phase, sauf si l'élève en a choisi un lui-même.
+  // briefing (Director) et polishing (QA) streament leur réflexion, pas de code
+  // à prévisualiser → onglet réflexion.
   useEffect(() => {
     if (!running || tabPinned.current) return;
-    if (state.phase === "thinking") setTab("reasoning");
+    if (
+      state.phase === "thinking" ||
+      state.phase === "briefing" ||
+      state.phase === "polishing"
+    )
+      setTab("reasoning");
     else if (state.phase !== "connect") setTab("code");
   }, [state.phase, running]);
 

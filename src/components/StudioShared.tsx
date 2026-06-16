@@ -135,9 +135,11 @@ export function LiveStream({ api, view }: { api: GenerationApi; view: "preview" 
             🎨
           </div>
           <p className="text-sm">
-            {api.state.phase === "thinking" || api.state.phase === "connect"
-              ? "Le modèle conçoit la pédagogie du jeu…"
-              : "L'aperçu apparaîtra dès les premières lignes de code…"}
+            {api.state.phase === "briefing"
+              ? "Le modèle imagine le concept et la direction artistique du jeu…"
+              : api.state.phase === "thinking" || api.state.phase === "connect"
+                ? "Le modèle conçoit la pédagogie du jeu…"
+                : "L'aperçu apparaîtra dès les premières lignes de code…"}
           </p>
         </div>
       )}

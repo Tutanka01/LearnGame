@@ -36,6 +36,19 @@ const EDIT_RESPONSE = `RÉSUMÉ : J'ai renommé le bouton principal.
 >>>>>>> REMPLACER
 `;
 
+// Étape 1 du pipeline de création : le Director renvoie un brief textuel.
+const DIRECTOR_BRIEF = `TITRE : Jeu Test TCP
+PROMESSE : À la fin, tu sauras comment circulent les paquets.
+CONCEPTS : adressage, segmentation, accusés de réception.
+MÉCANIQUE : faire circuler des paquets sur un réseau simulé.
+NIVEAUX : un par concept, difficulté croissante.
+BOSS FINAL : router un flux complet sans perte.
+MOMENT WOW : voir un paquet réémis après une perte.
+DIRECTION ARTISTIQUE APPLIQUÉE : terminal rétro, vert phosphore.`;
+
+// Étape 3 : la passe QA ne trouve rien à corriger (garde le jeu du Builder).
+const QA_RESPONSE = `RÉSUMÉ : Aucun défaut à corriger.`;
+
 let requestCount = 0;
 let slowMode = false; // pour le test d'annulation : réponse qui ne finit jamais
 
@@ -44,7 +57,17 @@ const server = http.createServer((req, res) => {
   req.on("data", (c) => (body += c));
   req.on("end", () => {
     requestCount++;
-    const isEdit = body.includes("CHERCHER");
+    // Le pipeline de création fait 3 appels distincts ; on les reconnaît à des
+    // marqueurs de leur prompt système/utilisateur (ordre important).
+    const text = body.includes("FORMAT DU BRIEF")
+      ? DIRECTOR_BRIEF // étape 1 : Director
+      : body.includes("FIDÉLITÉ AU BRIEF")
+        ? GAME_HTML // étape 2 : Builder
+        : body.includes("RELECTURE QUALITÉ")
+          ? QA_RESPONSE // étape 3 : QA
+          : body.includes("CHERCHER")
+            ? EDIT_RESPONSE // édition chirurgicale
+            : GAME_HTML; // repli single-shot
     res.writeHead(200, { "Content-Type": "text/event-stream" });
 
     const sse = (delta: object) =>
@@ -56,7 +79,6 @@ const server = http.createServer((req, res) => {
       return; // la connexion reste ouverte jusqu'à l'abort du client
     }
 
-    const text = isEdit ? EDIT_RESPONSE : GAME_HTML;
     sse({ reasoning_content: "Je conçois le jeu…" });
     // Découpe en morceaux pour streamer comme un vrai modèle.
     const parts: string[] = [];

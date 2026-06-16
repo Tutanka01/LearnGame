@@ -12,9 +12,11 @@ import {
   CheckCircle2,
   Gamepad2,
   Hammer,
+  Lightbulb,
   Loader2,
   SearchCheck,
   Sparkles,
+  Wand2,
   Wrench,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -40,9 +42,11 @@ export function stepsFor(mode: GenerationState["mode"]): GenStep[] {
     ];
   }
   return [
+    { label: "Concept", icon: Lightbulb, phases: ["briefing"] },
     { label: "Conception", icon: Brain, phases: ["connect", "thinking"] },
     { label: "Écriture", icon: Sparkles, phases: ["coding"] },
     { label: "Vérification", icon: SearchCheck, phases: ["validating"] },
+    { label: "Polissage", icon: Wand2, phases: ["polishing"] },
   ];
 }
 
@@ -58,6 +62,8 @@ export function phaseTitle(state: GenerationState): string {
   switch (state.phase) {
     case "connect":
       return "Connexion au modèle";
+    case "briefing":
+      return "Conception du concept du jeu";
     case "thinking":
       return state.mode === "edit"
         ? `Lecture du jeu et analyse de ta demande${tour}`
@@ -70,6 +76,8 @@ export function phaseTitle(state: GenerationState): string {
       return "Application des modifications";
     case "validating":
       return state.mode === "edit" ? "Vérification des modifications" : "Vérification du jeu";
+    case "polishing":
+      return `Relecture qualité et polissage${tour}`;
   }
 }
 

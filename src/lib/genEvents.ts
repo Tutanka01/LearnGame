@@ -12,7 +12,17 @@ export const GEN_PROTOCOL_VERSION = 2;
 
 export type GenJobType = "create" | "edit";
 
-export type GenPhase = "connect" | "thinking" | "coding" | "applying" | "validating";
+// Pipeline de création : briefing (Director) → thinking/coding (Builder) →
+// validating → polishing (QA). Édition : thinking → coding → applying →
+// validating. `briefing`/`polishing` sont propres au pipeline de création.
+export type GenPhase =
+  | "connect"
+  | "briefing"
+  | "thinking"
+  | "coding"
+  | "applying"
+  | "validating"
+  | "polishing";
 
 export type GenEvent =
   /** Premier événement du flux : identité du job. */
