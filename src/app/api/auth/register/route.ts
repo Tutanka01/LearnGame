@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       .prepare("INSERT INTO users (username, password_hash) VALUES (?, ?)")
       .run(name, hashPassword(password));
 
-    await setSessionCookie(Number(result.lastInsertRowid));
+    await setSessionCookie(Number(result.lastInsertRowid), req);
     return Response.json({ ok: true });
   });
 }

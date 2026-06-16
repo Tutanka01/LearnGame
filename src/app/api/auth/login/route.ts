@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       return apiError(401, "Nom d'utilisateur ou mot de passe incorrect.");
     }
 
-    await setSessionCookie(user.id);
+    await setSessionCookie(user.id, req);
     return Response.json({ ok: true });
   });
 }

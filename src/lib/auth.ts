@@ -68,16 +68,42 @@ export function parseSessionToken(token: string): number | null {
   return Number(userId);
 }
 
-export async function setSessionCookie(userId: number) {
+/**
+ * Faut-il marquer le cookie de session `secure` (réservé HTTPS) ?
+ *
+ * Un cookie `secure` envoyé sur une connexion HTTP pure est **silencieusement
+ * jeté par le navigateur** : l'utilisateur reste alors déconnecté sans erreur.
+ * On auto-détecte donc le protocole effectif au lieu de se fier à NODE_ENV :
+ *   - `SESSION_SECURE_COOKIE=0` force le cookie non-secure (HTTP assumé) ;
+ *   - `SESSION_SECURE_COOKIE=1` force le cookie secure (HTTPS assumé) ;
+ *   - sinon : `x-forwarded-proto` (reverse-proxy TLS) puis le protocole de la
+ *     requête. Sans requête disponible, on retombe sur NODE_ENV.
+ */
+function shouldUseSecureCookie(req?: Request): boolean {
+  const override = process.env.SESSION_SECURE_COOKIE?.trim();
+  if (override === "0") return false;
+  if (override === "1") return true;
+
+  if (req) {
+    const forwarded = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+    if (forwarded) return forwarded === "https";
+    try {
+      return new URL(req.url).protocol === "https:";
+    } catch {
+      /* URL inexploitable : on retombe sur le défaut ci-dessous */
+    }
+  }
+  return process.env.NODE_ENV === "production";
+}
+
+export async function setSessionCookie(userId: number, req?: Request) {
   const store = await cookies();
   store.set(SESSION_COOKIE, createSessionToken(userId), {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_DAYS * 24 * 3600,
-    // Cookie réservé au HTTPS en production. Déploiement en HTTP pur
-    // (ex. réseau interne sans TLS) : mettre SESSION_SECURE_COOKIE=0.
-    secure: process.env.NODE_ENV === "production" && process.env.SESSION_SECURE_COOKIE !== "0",
+    secure: shouldUseSecureCookie(req),
   });
 }
 
