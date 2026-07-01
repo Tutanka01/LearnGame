@@ -11,6 +11,7 @@ import {
   LogOut,
   Play,
   Search,
+  ShieldCheck,
   Sparkles,
   Trash2,
   Trophy,
@@ -84,7 +85,13 @@ function hashCode(s: string): number {
   return h;
 }
 
-export default function Dashboard({ username }: { username: string }) {
+export default function Dashboard({
+  username,
+  isAdmin,
+}: {
+  username: string;
+  isAdmin?: boolean;
+}) {
   const router = useRouter();
   const generation = useGeneration();
   const { toast } = useToast();
@@ -297,6 +304,17 @@ export default function Dashboard({ username }: { username: string }) {
             <span className="text-[var(--color-ink-dim)] truncate hidden sm:inline">
               <span className="text-white font-medium">{username}</span>
             </span>
+            {isAdmin && (
+              <a
+                href="/admin"
+                className="text-[var(--color-ink-dim)] hover:text-white transition-colors shrink-0 inline-flex items-center gap-1.5"
+                aria-label="Administration"
+                title="Administration"
+              >
+                <ShieldCheck size={14} aria-hidden />
+                <span className="hidden sm:inline">Admin</span>
+              </a>
+            )}
             <button
               onClick={logout}
               className="text-[var(--color-ink-dim)] hover:text-white transition-colors shrink-0 inline-flex items-center gap-1.5"

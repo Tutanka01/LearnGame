@@ -24,6 +24,13 @@ export async function requireUser(): Promise<User> {
   return user;
 }
 
+/** Utilisateur connecté ET admin, sinon ApiError 401/403. */
+export async function requireAdmin(): Promise<User> {
+  const user = await requireUser();
+  if (user.role !== "admin") throw new ApiError(403, "Réservé aux administrateurs.");
+  return user;
+}
+
 /** Jeu existant (ligne complète), sinon ApiError 404. */
 export function requireGame(id: string): Game {
   const game = db.prepare("SELECT * FROM games WHERE id = ?").get(id) as unknown as

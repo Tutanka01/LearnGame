@@ -16,9 +16,9 @@ export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [pending, setPending] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -28,11 +28,15 @@ export default function LoginPage() {
       const res = await fetch(`/api/auth/${mode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, code }),
+        body: JSON.stringify({ username, password }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Une erreur est survenue.");
+        return;
+      }
+      if (mode === "register" && data.pending) {
+        setPending(true);
         return;
       }
       // Retour à la page d'origine si la session avait expiré (?next=…).
@@ -73,6 +77,7 @@ export default function LoginPage() {
             onChange={(m) => {
               setMode(m);
               setError("");
+              setPending(false);
             }}
             options={[
               { value: "login", label: "Connexion" },
@@ -80,72 +85,76 @@ export default function LoginPage() {
             ]}
           />
 
-          <form onSubmit={submit} className="space-y-4">
-            <div>
-              <label htmlFor="username" className="block text-sm text-slate-300 mb-1.5">
-                Nom d&apos;utilisateur
-              </label>
-              <input
-                id="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                autoFocus
-                autoComplete="username"
-                className="field"
-                placeholder="ex : marie.dupont"
-              />
+          {pending ? (
+            <div className="space-y-4 text-center">
+              <p className="text-sm text-emerald-300 bg-emerald-950/40 border border-emerald-900/50 rounded-lg px-3 py-3">
+                Ton compte a été créé. Un enseignant doit l&apos;approuver avant que tu puisses te
+                connecter.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("login");
+                  setPending(false);
+                }}
+                className="btn btn-primary w-full py-3"
+              >
+                Retour à la connexion
+              </button>
             </div>
-            <div>
-              <label htmlFor="password" className="block text-sm text-slate-300 mb-1.5">
-                Mot de passe
-              </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete={mode === "login" ? "current-password" : "new-password"}
-                className="field"
-                placeholder="••••••••"
-              />
-            </div>
-            {mode === "register" && (
+          ) : (
+            <form onSubmit={submit} className="space-y-4">
               <div>
-                <label htmlFor="code" className="block text-sm text-slate-300 mb-1.5">
-                  Code d&apos;inscription{" "}
-                  <span className="text-[#5b6478]">(si fourni par ton enseignant)</span>
+                <label htmlFor="username" className="block text-sm text-slate-300 mb-1.5">
+                  Nom d&apos;utilisateur
                 </label>
                 <input
-                  id="code"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
+                  id="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  autoFocus
+                  autoComplete="username"
                   className="field"
-                  placeholder="optionnel"
+                  placeholder="ex : marie.dupont"
                 />
               </div>
-            )}
+              <div>
+                <label htmlFor="password" className="block text-sm text-slate-300 mb-1.5">
+                  Mot de passe
+                </label>
+                <input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
+                  className="field"
+                  placeholder="••••••••"
+                />
+              </div>
 
-            {error && (
-              <p
-                className="text-sm text-red-400 bg-red-950/40 border border-red-900/50 rounded-lg px-3 py-2"
-                role="alert"
-              >
-                {error}
-              </p>
-            )}
-
-            <button type="submit" disabled={loading} className="btn btn-primary w-full py-3">
-              {loading ? (
-                <Loader2 size={16} className="animate-spin" aria-label="Connexion en cours" />
-              ) : mode === "login" ? (
-                "Se connecter"
-              ) : (
-                "Créer mon compte"
+              {error && (
+                <p
+                  className="text-sm text-red-400 bg-red-950/40 border border-red-900/50 rounded-lg px-3 py-2"
+                  role="alert"
+                >
+                  {error}
+                </p>
               )}
-            </button>
-          </form>
+
+              <button type="submit" disabled={loading} className="btn btn-primary w-full py-3">
+                {loading ? (
+                  <Loader2 size={16} className="animate-spin" aria-label="Connexion en cours" />
+                ) : mode === "login" ? (
+                  "Se connecter"
+                ) : (
+                  "Créer mon compte"
+                )}
+              </button>
+            </form>
+          )}
         </div>
 
         <ul className="mt-6 space-y-2">

@@ -6,10 +6,9 @@ import { clientIp, rateLimit } from "@/lib/ratelimit";
 
 export async function POST(req: NextRequest) {
   return handleApi(async () => {
-    const { username, password, code } = await readJson<{
+    const { username, password } = await readJson<{
       username: string;
       password: string;
-      code: string;
     }>(req);
 
     if (typeof username !== "string" || typeof password !== "string") {
@@ -30,21 +29,27 @@ export async function POST(req: NextRequest) {
       return apiError(400, `Le mot de passe ne peut pas dépasser ${PASSWORD_MAX_LENGTH} caractères.`);
     }
 
-    const requiredCode = process.env.REGISTRATION_CODE?.trim();
-    if (requiredCode && code !== requiredCode) {
-      return apiError(403, "Code d'inscription incorrect.");
-    }
-
     const existing = db.prepare("SELECT id FROM users WHERE username = ?").get(name);
     if (existing) {
       return apiError(409, "Ce nom d'utilisateur est déjà pris.");
     }
 
-    const result = db
-      .prepare("INSERT INTO users (username, password_hash) VALUES (?, ?)")
-      .run(name, hashPassword(password));
+    const adminUsernames = (process.env.ADMIN_USERNAMES ?? "")
+      .split(",")
+      .map((u) => u.trim().toLowerCase())
+      .filter(Boolean);
+    const isAdmin = adminUsernames.includes(name.toLowerCase());
+    const role = isAdmin ? "admin" : "user";
+    const status = isAdmin ? "approved" : "pending";
 
-    await setSessionCookie(Number(result.lastInsertRowid), req);
-    return Response.json({ ok: true });
+    const result = db
+      .prepare("INSERT INTO users (username, password_hash, role, status) VALUES (?, ?, ?, ?)")
+      .run(name, hashPassword(password), role, status);
+
+    const pending = status === "pending";
+    if (!pending) {
+      await setSessionCookie(Number(result.lastInsertRowid), req);
+    }
+    return Response.json({ ok: true, pending });
   });
 }

@@ -6,6 +6,22 @@ import fs from "fs";
 // En dev, Next.js recharge les modules : on garde une seule connexion globale.
 const globalForDb = globalThis as unknown as { __lgDb?: DatabaseSync };
 
+/**
+ * Bootstrap du premier admin : les noms listés dans ADMIN_USERNAMES (séparés par
+ * des virgules) sont promus role='admin', status='approved' s'ils existent déjà
+ * en base. Idempotent, sans effet si la variable est vide.
+ */
+function promoteAdmins(db: DatabaseSync): void {
+  const raw = process.env.ADMIN_USERNAMES?.trim();
+  if (!raw) return;
+  const names = raw
+    .split(",")
+    .map((n) => n.trim())
+    .filter(Boolean);
+  const stmt = db.prepare("UPDATE users SET role = 'admin', status = 'approved' WHERE username = ?");
+  for (const name of names) stmt.run(name);
+}
+
 function createDb(): DatabaseSync {
   const dataDir = path.join(process.cwd(), "data");
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
@@ -157,6 +173,23 @@ function createDb(): DatabaseSync {
     db.exec("CREATE UNIQUE INDEX idx_scores_unique ON scores(game_id, user_id);");
   }
 
+  // Inscription avec approbation admin : role ('user'|'admin') et status
+  // ('pending'|'approved'). Défaut 'approved' sur la colonne pour ne pas bloquer
+  // les comptes déjà en base — les nouveaux comptes reçoivent 'pending' à
+  // l'INSERT (route d'inscription), pas via ce défaut.
+  const userCols = db
+    .prepare("PRAGMA table_info(users)")
+    .all()
+    .map((c) => (c as { name: string }).name);
+  if (!userCols.includes("role")) {
+    db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user';");
+  }
+  if (!userCols.includes("status")) {
+    db.exec("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'approved';");
+  }
+
+  promoteAdmins(db);
+
   return db;
 }
 
@@ -174,6 +207,8 @@ export interface User {
   id: number;
   username: string;
   password_hash: string;
+  role: string;
+  status: string;
   created_at: string;
 }
 

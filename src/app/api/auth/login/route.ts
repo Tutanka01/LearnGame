@@ -30,6 +30,10 @@ export async function POST(req: NextRequest) {
       return apiError(401, "Nom d'utilisateur ou mot de passe incorrect.");
     }
 
+    if (user.status !== "approved") {
+      return apiError(403, "Ton compte est en attente d'approbation par un enseignant.");
+    }
+
     await setSessionCookie(user.id, req);
     return Response.json({ ok: true });
   });
