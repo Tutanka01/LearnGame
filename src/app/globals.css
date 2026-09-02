@@ -28,10 +28,14 @@
   --color-ink-dim: #99a1bd;
   --color-ink-faint: #5b6480;
 
-  /* — Typographie — */
-  --font-sans: var(--font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-display: var(--font-display), var(--font-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* — Typographie —
+     Les variables --font-bricolage / --font-geist-sans / --font-geist-mono
+     sont posées par next/font sur <html> (cf. layout.tsx). Les noms étant
+     distincts des tokens ci-dessous, aucune référence circulaire : la pile
+     garde ses replis système même si une police ne charge pas. */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: var(--font-bricolage), var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* — Ombres : douces, colorées, jamais plates — */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -49,6 +53,12 @@ body {
   font-feature-settings: "cv01", "ss03";
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Interface sombre de bout en bout : contrôles natifs (autofill, inputs date…),
+   barres de défilement et piqûres de zoom du navigateur suivent le thème. */
+:root {
+  color-scheme: dark;
 }
 
 /* Titrage : la police d'affichage, serrée et assumée. */
@@ -535,7 +545,12 @@ body {
   animation: preview-fade-in 0.35s ease 0.15s both;
 }
 
-/* --- Barres de défilement discrètes --- */
+/* --- Barres de défilement discrètes (WebKit + Firefox) --- */
+.thin-scroll,
+.code-stream {
+  scrollbar-width: thin;
+  scrollbar-color: #2c3550 transparent;
+}
 .code-stream::-webkit-scrollbar,
 .thin-scroll::-webkit-scrollbar {
   width: 6px;

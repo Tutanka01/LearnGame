@@ -10,6 +10,8 @@ import Link from "next/link";
 import { useGeneration } from "@/components/GenerationProvider";
 import { ErrorBubble, LiveStream } from "@/components/StudioShared";
 import { GenerationBubble } from "@/components/GenerationPanel";
+import { Code2, Gamepad2, MessageSquare } from "lucide-react";
+import Segmented from "@/components/ui/Segmented";
 
 export default function StudioNewPage() {
   const router = useRouter();
@@ -63,26 +65,18 @@ export default function StudioNewPage() {
         <Link href="/" className="btn btn-ghost text-xs px-2.5 py-1.5" aria-label="Retour">
           ←
         </Link>
-        <div className="flex flex-1 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] p-0.5 text-xs">
-          {(
-            [
-              ["chat", "💬 Discussion"],
-              ["preview", "🕹 Aperçu"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              onClick={() => setMobilePane(value)}
-              className={`flex-1 px-3 py-1.5 rounded-md font-medium transition-colors ${
-                mobilePane === value
-                  ? "bg-[var(--color-accent)] text-white"
-                  : "text-[var(--color-ink-dim)]"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          className="flex-1 [&_.seg-item]:flex-1"
+          ariaLabel="Discussion ou aperçu"
+          size="sm"
+          tone="accent"
+          value={mobilePane}
+          onChange={setMobilePane}
+          options={[
+            { value: "chat", label: "Discussion", icon: MessageSquare },
+            { value: "preview", label: "Aperçu", icon: Gamepad2 },
+          ]}
+        />
       </div>
 
       <div className="flex-1 flex min-h-0">
@@ -141,26 +135,17 @@ export default function StudioNewPage() {
           } lg:flex flex-col flex-1 min-w-0 min-h-0`}
         >
           <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface)]/60">
-            <div className="flex rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] p-0.5 text-xs">
-              {(
-                [
-                  ["preview", "🕹 Aperçu"],
-                  ["code", "⌨️ Code"],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  onClick={() => setTab(value)}
-                  className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
-                    tab === value
-                      ? "bg-[var(--color-surface-2)] text-white"
-                      : "text-[var(--color-ink-dim)] hover:text-white"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <Segmented
+              size="sm"
+              ariaLabel="Aperçu ou code"
+              role="radiogroup"
+              value={tab}
+              onChange={setTab}
+              options={[
+                { value: "preview", label: "Aperçu", icon: Gamepad2 },
+                { value: "code", label: "Code", icon: Code2 },
+              ]}
+            />
             {state.status === "running" && (
               <span className="px-2 py-1 rounded-full bg-[var(--color-accent)]/15 border border-[var(--color-accent)]/40 text-[10px] font-semibold text-[var(--color-accent-strong)]">
                 ✍️ v1 en écriture…

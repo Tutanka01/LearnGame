@@ -69,12 +69,21 @@ export default function PublicPlayer({
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button onClick={fullscreen} className="btn btn-ghost hidden sm:inline-flex">
-              <Maximize size={14} aria-hidden /> Plein écran
+            {/* Plein écran : icône seule sur mobile (ça marche sur Android/iOS
+                modernes), icône + libellé dès sm. */}
+            <button
+              onClick={fullscreen}
+              className="btn btn-ghost px-2.5 sm:px-3.5"
+              title="Plein écran"
+              aria-label="Plein écran"
+            >
+              <Maximize size={14} aria-hidden />
+              <span className="hidden sm:inline">Plein écran</span>
             </button>
             {username ? (
               <Link href={`/games/${game.id}`} className="btn btn-ghost">
-                Ouvrir dans LearnGame
+                {/* Libellé raccourci sur mobile pour éviter le wrap du header. */}
+                Ouvrir<span className="hidden sm:inline"> dans LearnGame</span>
               </Link>
             ) : (
               <Link href="/login" className="btn btn-primary">

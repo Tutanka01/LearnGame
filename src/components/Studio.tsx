@@ -213,6 +213,16 @@ export default function Studio({
     };
   }, [tab, busy, game.id, game.version, reloadKey]);
 
+  // Menu « ⋯ » : fermeture au clavier (Échap), en plus de l'overlay au clic.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
+
   // Composeur : hauteur adaptée au contenu (jusqu'à ~6 lignes).
   const autoResize = useCallback(() => {
     const el = inputRef.current;
@@ -613,8 +623,10 @@ export default function Studio({
           className={`${mobilePane === "preview" ? "flex" : "hidden"} lg:flex flex-col min-w-0 min-h-0`}
         >
           <section className="flex flex-1 flex-col w-full min-h-0">
-            {/* Barre d'outils */}
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface)]/60 flex-wrap">
+            {/* Barre d'outils — compacte sur mobile : la pilule de version passe
+                au second plan (l'info est déjà dans le chat) pour tenir sur une
+                seule rangée et laisser la hauteur au jeu. */}
+            <div className="flex items-center gap-1.5 sm:gap-2 px-2 py-1.5 sm:px-3 sm:py-2 border-b border-[var(--color-border)] bg-[var(--color-surface)]/60 flex-wrap">
               <Segmented
                 size="sm"
                 ariaLabel="Aperçu ou code"
@@ -644,12 +656,12 @@ export default function Studio({
               )}
 
               {busy ? (
-                <span className="px-2.5 py-1 rounded-full bg-[var(--color-accent)]/15 border border-[var(--color-accent)]/40 text-[10px] font-semibold text-[var(--color-accent-strong)] inline-flex items-center gap-1.5">
+                <span className="hidden sm:inline-flex px-2.5 py-1 rounded-full bg-[var(--color-accent)]/15 border border-[var(--color-accent)]/40 text-[10px] font-semibold text-[var(--color-accent-strong)] items-center gap-1.5">
                   <span className="typing-dot" /> v{game.version + 1} en écriture…
                 </span>
               ) : (
                 <span
-                  className="px-2.5 py-1 rounded-full bg-[var(--color-bg)] border border-[var(--color-border)] text-[10px] font-semibold text-[var(--color-ink-dim)] tabular"
+                  className="hidden sm:inline-flex px-2.5 py-1 rounded-full bg-[var(--color-bg)] border border-[var(--color-border)] text-[10px] font-semibold text-[var(--color-ink-dim)] tabular"
                   title={`${versions.length} version${versions.length > 1 ? "s" : ""} archivée${versions.length > 1 ? "s" : ""}`}
                 >
                   v{game.version}
@@ -659,7 +671,7 @@ export default function Studio({
               <div className="flex-1" />
 
               {/* Actions primaires : repères du Studio, toujours visibles. */}
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1 sm:gap-1.5">
                 <button
                   onClick={() => setReloadKey((k) => k + 1)}
                   className={`${toolButton} px-2`}

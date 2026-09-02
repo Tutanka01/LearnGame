@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiError, handleApi, readJson, requireOwnedGame, requireUser } from "@/lib/api";
 import { jobRunner, toPublicJob, JobPayload } from "@/lib/jobs";
+import { rateLimit } from "@/lib/ratelimit";
 
 const DIFFICULTIES = new Set(["débutant", "intermédiaire", "avancé"]);
 
@@ -9,6 +10,13 @@ const DIFFICULTIES = new Set(["débutant", "intermédiaire", "avancé"]);
 export async function POST(req: NextRequest) {
   return handleApi(async () => {
     const user = await requireUser();
+
+    // Garde-fou anti-spam : 8 générations max par élève et par 10 minutes
+    // (chaque job coûte un appel au LLM).
+    if (!rateLimit(`jobs:${user.id}`, 8, 10 * 60_000)) {
+      return apiError(429, "Trop de générations lancées — réessaie dans quelques minutes.");
+    }
+
     const body = await readJson<{
       topic: string;
       difficulty: string;

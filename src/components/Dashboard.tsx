@@ -68,6 +68,14 @@ const DIFFICULTIES = [
   { value: "avancé", label: "🔥 Avancé" },
 ];
 
+// Pastille de difficulté : couleur sémantique (repère visuel immédiat dans la
+// bibliothèque), avec repli neutre pour toute valeur inattendue.
+const DIFF_PILL: Record<string, string> = {
+  débutant: "bg-emerald-500/10 border-emerald-500/40 text-emerald-300",
+  intermédiaire: "bg-amber-500/10 border-amber-500/40 text-amber-300",
+  avancé: "bg-rose-500/10 border-rose-500/40 text-rose-300",
+};
+
 // Couverture déterministe par jeu : dégradé + emoji dérivés de l'id.
 const COVERS = [
   "from-violet-600/70 to-fuchsia-500/50",
@@ -83,6 +91,25 @@ function hashCode(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return h;
+}
+
+// Les dates SQLite sont stockées en UTC ("YYYY-MM-DD HH:MM:SS") : on force
+// l'interprétation UTC (suffixe Z) pour un affichage correct en heure locale.
+function parseSqliteDate(s: string): Date {
+  return new Date(s.includes("T") ? s : s.replace(" ", "T") + "Z");
+}
+
+// Date relative compacte en français, pour la ligne meta des cartes.
+function formatRelative(sqliteDate: string): string {
+  const d = parseSqliteDate(sqliteDate);
+  if (Number.isNaN(d.getTime())) return "";
+  const days = Math.floor((Date.now() - d.getTime()) / 86_400_000);
+  if (days <= 0) return "aujourd'hui";
+  if (days === 1) return "hier";
+  if (days < 30) return `il y a ${days} j`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `il y a ${months} mo`;
+  return d.toLocaleDateString("fr-FR");
 }
 
 export default function Dashboard({
@@ -113,6 +140,11 @@ export default function Dashboard({
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const topicRef = useRef<HTMLTextAreaElement>(null);
+  // Garde anti-course : compteur de requêtes, seule la plus récente peut
+  // écrire l'état (une réponse périmée qui arrive après est ignorée).
+  const requestIdRef = useRef(0);
+  // Passe à true au premier chargement ; ensuite, debounce de 300 ms.
+  const didLoadRef = useRef(false);
 
   // Six suggestions : rendu serveur déterministe (pas d'aléatoire pendant le
   // SSR, sinon erreur d'hydratation React #418), mélange après le montage.
@@ -123,32 +155,56 @@ export default function Dashboard({
 
   const loadGames = useCallback(
     async (offset = 0) => {
+      const reqId = ++requestIdRef.current;
       if (offset > 0) setLoadingMore(true);
+      // Recherche/filtre/tri délégués au serveur (URLSearchParams encode q).
+      const params = new URLSearchParams({
+        limit: String(PAGE_SIZE),
+        offset: String(offset),
+      });
+      const q = search.trim();
+      if (q) params.set("q", q);
+      if (filter === "miens") params.set("mine", "1");
+      if (filter === "à-faire") params.set("todo", "1");
+      if (sort === "populaires") params.set("sort", "popular");
       try {
         const data = await apiFetch<{
           games: GameSummary[];
           total: number;
           userId: number;
           stats: Stats;
-        }>(`/api/games?limit=${PAGE_SIZE}&offset=${offset}`);
+        }>(`/api/games?${params.toString()}`);
+        if (reqId !== requestIdRef.current) return; // réponse périmée
         setGames((prev) => (offset === 0 ? data.games : [...prev, ...data.games]));
         setTotal(data.total);
         setUserId(data.userId);
         setStats(data.stats);
       } catch (err) {
+        if (reqId !== requestIdRef.current) return;
         if (err instanceof HttpError && err.status !== 401) {
           toast("Impossible de charger la bibliothèque.", "error");
         }
       } finally {
-        setLoaded(true);
-        setLoadingMore(false);
+        if (reqId === requestIdRef.current) {
+          setLoaded(true);
+          setLoadingMore(false);
+        }
       }
     },
-    [toast]
+    [search, filter, sort, toast]
   );
 
+  // Premier chargement immédiat, puis rechargement automatique (offset 0)
+  // avec debounce de 300 ms à chaque changement de recherche, filtre ou tri.
   useEffect(() => {
-    loadGames();
+    const timer = setTimeout(
+      () => {
+        didLoadRef.current = true;
+        loadGames(0);
+      },
+      didLoadRef.current ? 300 : 0
+    );
+    return () => clearTimeout(timer);
   }, [loadGames]);
 
   // Raccourcis clavier : "/" → recherche · ⌘K / Ctrl+K → palette de commandes.
@@ -223,24 +279,8 @@ export default function Dashboard({
     setHoveredId(null);
   }
 
-  const visibleGames = useMemo(() => {
-    let list = games;
-    if (filter === "miens") list = list.filter((g) => g.user_id === userId);
-    if (filter === "à-faire") list = list.filter((g) => !g.completed_by_me);
-    const q = search.trim().toLowerCase();
-    if (q) {
-      list = list.filter(
-        (g) =>
-          g.title.toLowerCase().includes(q) ||
-          g.topic.toLowerCase().includes(q) ||
-          g.author.toLowerCase().includes(q)
-      );
-    }
-    if (sort === "populaires") {
-      list = [...list].sort((a, b) => b.finishers - a.finishers || b.plays - a.plays);
-    }
-    return list;
-  }, [games, filter, sort, search, userId]);
+  // Le filtrage et le tri sont désormais effectués côté serveur : la liste
+  // affichée est simplement celle renvoyée par l'API.
 
   // Commandes de la palette ⌘K : créer, naviguer, ouvrir un jeu.
   const paletteCommands = useMemo<PaletteCommand[]>(() => {
@@ -361,7 +401,7 @@ export default function Dashboard({
                 placeholder='Ex : "Je veux comprendre comment fonctionne TCP/IP"'
                 className="w-full bg-transparent resize-none px-3 py-2 focus:outline-none placeholder:text-[#5b6478]"
               />
-              <div className="flex items-center justify-between gap-3 px-2 pb-1 flex-wrap">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 px-2 pb-1">
                 <div className="flex gap-1.5" role="radiogroup" aria-label="Niveau de difficulté">
                   {DIFFICULTIES.map((d) => (
                     <button
@@ -382,7 +422,7 @@ export default function Dashboard({
                 <button
                   onClick={() => generate()}
                   disabled={topic.trim().length < 3 && generation.state.status !== "running"}
-                  className="btn btn-primary px-5"
+                  className="btn btn-primary px-5 w-full sm:w-auto"
                 >
                   {generation.state.status === "running" ? (
                     <>
@@ -399,14 +439,18 @@ export default function Dashboard({
             </div>
 
             <div className="flex flex-wrap justify-center gap-2 mt-5">
-              {suggestions.map((s) => (
+              {suggestions.map((s, i) => (
                 <button
                   key={s}
                   onClick={() => {
                     setTopic(s);
                     generate(s);
                   }}
-                  className="px-3 py-1.5 rounded-full text-xs text-slate-300 bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-accent)] hover:text-white hover:bg-[var(--color-surface-2)] transition-colors"
+                  // Deux suggestions de moins sur petit écran : la zone de
+                  // création reste compacte sans amputer le choix sur desktop.
+                  className={`px-3 py-1.5 rounded-full text-xs text-slate-300 bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-accent)] hover:text-white hover:bg-[var(--color-surface-2)] transition-colors ${
+                    i >= 4 ? "hidden sm:inline-flex" : ""
+                  }`}
                 >
                   {s}
                 </button>
@@ -418,7 +462,17 @@ export default function Dashboard({
         {/* --- Bibliothèque --- */}
         <section>
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-            <h3 className="font-display text-2xl shrink-0">📚 Bibliothèque de jeux</h3>
+            <h3 className="font-display text-2xl shrink-0">
+              📚 Bibliothèque de jeux{" "}
+              {loaded && (
+                <span
+                  className="text-xs font-normal text-[var(--color-ink-dim)] whitespace-nowrap"
+                  title="Nombre total de jeux correspondant à ta recherche et tes filtres"
+                >
+                  {total} jeu{total > 1 ? "x" : ""}
+                </span>
+              )}
+            </h3>
             <div className="relative flex-1 min-w-48 max-w-sm">
               <Search
                 size={14}
@@ -471,7 +525,7 @@ export default function Dashboard({
                 <div key={i} className="skeleton h-44" />
               ))}
             </div>
-          ) : visibleGames.length === 0 ? (
+          ) : games.length === 0 ? (
             <div className="text-center py-16 border border-dashed border-[var(--color-border)] rounded-2xl float-in">
               <div className="text-4xl mb-3" aria-hidden>
                 🕹️
@@ -500,7 +554,7 @@ export default function Dashboard({
           ) : (
             <>
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger">
-                {visibleGames.map((g) => {
+                {games.map((g) => {
                   const h = hashCode(g.id);
                   return (
                     <div
@@ -517,6 +571,11 @@ export default function Dashboard({
                       <div
                         className={`relative h-24 bg-gradient-to-br ${COVERS[h % COVERS.length]} flex items-center justify-center text-4xl overflow-hidden`}
                       >
+                        {/* Lumière rasante : donne du relief au dégradé plat */}
+                        <div
+                          className="absolute inset-0 bg-[radial-gradient(ellipse_at_18%_0%,rgba(255,255,255,0.25),transparent_55%)]"
+                          aria-hidden
+                        />
                         <span
                           className="drop-shadow-lg group-hover:scale-125 transition-transform"
                           aria-hidden
@@ -569,7 +628,12 @@ export default function Dashboard({
                         </h4>
                         <p className="text-xs text-[#5b6478] mt-1.5 line-clamp-2">{g.topic}</p>
                         <div className="flex items-center gap-2 mt-3 text-[11px] text-[var(--color-ink-dim)] flex-wrap">
-                          <span className="px-2 py-0.5 rounded-full bg-[var(--color-bg)] border border-[var(--color-border)] capitalize">
+                          <span
+                            className={`px-2 py-0.5 rounded-full border capitalize ${
+                              DIFF_PILL[g.difficulty] ??
+                              "bg-[var(--color-bg)] border-[var(--color-border)]"
+                            }`}
+                          >
                             {g.difficulty}
                           </span>
                           <span>par {g.user_id === userId ? "toi" : g.author}</span>
@@ -582,6 +646,12 @@ export default function Dashboard({
                             </span>
                           )}
                           {g.version > 1 && <span>v{g.version}</span>}
+                          <span
+                            className="whitespace-nowrap"
+                            title={parseSqliteDate(g.created_at).toLocaleString("fr-FR")}
+                          >
+                            {formatRelative(g.created_at)}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -589,7 +659,7 @@ export default function Dashboard({
                 })}
               </div>
 
-              {games.length < total && !search && filter === "tous" && (
+              {games.length < total && (
                 <div className="text-center mt-8">
                   <button
                     onClick={() => loadGames(games.length)}

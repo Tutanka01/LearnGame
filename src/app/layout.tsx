@@ -8,14 +8,17 @@ import "./globals.css";
 // Couples typographiques : un grotesque de titrage à fort caractère (Bricolage)
 // pour la marque et les en-têtes, un corps de texte d'interface très lisible
 // (Geist), et un mono pour le code et les compteurs (timers, scores).
+// NB : les variables portent des noms DÉDIÉS (--font-bricolage, etc.) — les
+// tokens @theme de globals.css s'y réfèrent pour composer les piles avec
+// replis, sans jamais créer de référence circulaire CSS.
 const display = Bricolage_Grotesque({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-display",
+  variable: "--font-bricolage",
   weight: ["500", "600", "700", "800"],
 });
-const sans = Geist({ subsets: ["latin"], display: "swap", variable: "--font-sans" });
-const mono = Geist_Mono({ subsets: ["latin"], display: "swap", variable: "--font-mono" });
+const sans = Geist({ subsets: ["latin"], display: "swap", variable: "--font-geist-sans" });
+const mono = Geist_Mono({ subsets: ["latin"], display: "swap", variable: "--font-geist-mono" });
 
 export const metadata: Metadata = {
   title: {

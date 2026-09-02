@@ -154,7 +154,8 @@ export default function ShareModal({
                     onFocus={(e) => e.target.select()}
                     className="field text-sm font-mono flex-1 min-w-0"
                   />
-                  <button onClick={copyUrl} className="btn btn-primary shrink-0">
+                  {/* aria-live : annonce « Copié » aux lecteurs d'écran (le rôle button est conservé). */}
+                  <button onClick={copyUrl} aria-live="polite" className="btn btn-primary shrink-0">
                     {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
                     {copied ? "Copié" : "Copier"}
                   </button>

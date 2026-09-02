@@ -14,7 +14,7 @@ mais appliqué à la pédagogie.
 - 🪄 **Itération** — l'élève peut demander des améliorations ("ajoute un niveau", "trop dur").
 - 📚 **Bibliothèque partagée** — recherche, filtres (à faire / mes jeux), tri par popularité ;
   tous les jeux générés sont jouables par toute la classe. Téléchargement du jeu en .html.
-- 👤 **Comptes élèves** — inscription simple, optionnellement protégée par un code de classe.
+- 👤 **Comptes élèves** — inscription simple, validée par un enseignant (comptes admin).
 - 🔁 **Robustesse** — nouvelle tentative automatique si le modèle renvoie une réponse invalide,
   détection des réponses tronquées (budget de tokens insuffisant).
 - 🔒 **Sécurité** — les jeux tournent dans une iframe sandboxée avec une CSP stricte :
@@ -36,7 +36,7 @@ Dans `.env`, configure ton endpoint compatible OpenAI :
 | `OPENAI_MODEL` | Nom du modèle à utiliser |
 | `OPENAI_MAX_TOKENS` | Budget de tokens par jeu (16000 recommandé — les jeux sont longs) |
 | `SESSION_SECRET` | Secret de signature des sessions (`openssl rand -hex 32`) |
-| `REGISTRATION_CODE` | Code que les élèves saisissent pour s'inscrire (vide = inscription libre) |
+| `ADMIN_USERNAMES` | Noms d'utilisateur (séparés par des virgules) promus admin : ils approuvent les inscriptions |
 
 > ⚠️ Choisis un modèle **fort en génération de code** (la qualité des jeux en dépend
 > directement) et avec un budget de sortie d'au moins ~16k tokens.

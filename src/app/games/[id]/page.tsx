@@ -1,9 +1,30 @@
+import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import db, { Game } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import Studio from "@/components/Studio";
 
 export const dynamic = "force-dynamic";
+
+// Métadonnées : contenu privé (réservé aux comptes), donc indexation interdite.
+// SELECT léger dédié — pas besoin des jointures de la page elle-même.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const row = db
+    .prepare(`SELECT title, topic FROM games WHERE id = ?`)
+    .get(id) as unknown as { title: string; topic: string } | undefined;
+
+  if (!row) return { title: "Jeu — LearnGame", robots: { index: false } };
+  return {
+    title: row.title || row.topic,
+    description: `Jeu pédagogique : ${row.topic}`,
+    robots: { index: false },
+  };
+}
 
 export default async function GamePage({ params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();

@@ -2,7 +2,7 @@
 
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import Segmented from "@/components/ui/Segmented";
 
 const FEATURES = [
@@ -19,6 +19,8 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState(false);
+  // Affichage en clair du mot de passe (icône œil dans le champ).
+  const [showPassword, setShowPassword] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -123,16 +125,37 @@ export default function LoginPage() {
                 <label htmlFor="password" className="block text-sm text-slate-300 mb-1.5">
                   Mot de passe
                 </label>
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  autoComplete={mode === "login" ? "current-password" : "new-password"}
-                  className="field"
-                  placeholder="••••••••"
-                />
+                <div className="relative">
+                  <input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    autoComplete={mode === "login" ? "current-password" : "new-password"}
+                    className="field pr-10"
+                    placeholder="••••••••"
+                  />
+                  {/* Afficher / masquer le mot de passe, sans soumettre le formulaire. */}
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-[var(--color-ink-dim)] hover:text-white transition-colors"
+                    aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                    aria-pressed={showPassword}
+                  >
+                    {showPassword ? (
+                      <EyeOff size={16} aria-hidden />
+                    ) : (
+                      <Eye size={16} aria-hidden />
+                    )}
+                  </button>
+                </div>
+                {mode === "register" && (
+                  <p className="text-xs text-[var(--color-ink-dim)] mt-1.5">
+                    6 caractères minimum.
+                  </p>
+                )}
               </div>
 
               {error && (

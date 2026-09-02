@@ -26,7 +26,11 @@ export default async function AdminPage() {
       </header>
 
       <div className="max-w-5xl mx-auto px-6 py-12">
-        <h2 className="font-display text-2xl mb-6">Comptes en attente d&apos;approbation</h2>
+        <h2 className="font-display text-2xl">Comptes en attente d&apos;approbation</h2>
+        <p className="text-sm text-[var(--color-ink-dim)] mt-1.5 mb-6">
+          Les nouveaux élèves s&apos;inscrivent librement ; leur compte reste inactif tant que tu ne
+          l&apos;approuves pas ici.
+        </p>
         <AdminUsers />
       </div>
     </main>
