@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> Les agents hors Claude Code (OpenCode, Codex…) partent de `AGENTS.md` à la racine —
+> guide d'accueil synthétique avec checklists et bonnes pratiques de sous-agents.
+> Les deux fichiers doivent rester cohérents : toute règle modifiée ici s'y reporte.
+
 ## Le projet en une phrase
 
 LearnGame : des étudiants décrivent un sujet, un LLM génère un jeu pédagogique HTML autonome, jouable et améliorable par chat dans un Studio façon Lovable (chat à gauche, jeu rendu à droite).
@@ -55,7 +59,7 @@ Pour désactiver le thinking (`OPENAI_REASONING_EFFORT=none`), la requête envoi
 
 ### Deux modes de génération (`src/lib/generation.ts`)
 
-- **Création** : prompt `GAME_SYSTEM_PROMPT` → jeu complet streamé, jusqu'à 3 tentatives avec la raison précise du rejet renvoyée au modèle (et consigne "plus compact" si troncature).
+- **Création** = pipeline DIRECTOR → BUILDER → QA (`runCreatePipeline`) : le Director conçoit un **brief** (direction artistique imposée, cf. `artDirection.ts`), le Builder l'implémente en un seul fichier HTML (jusqu'à 3 tentatives avec la raison précise du rejet renvoyée au modèle, consigne "plus compact" si troncature), puis la **QA** retouche par blocs CHERCHER/REMPLACER **nourrie des défauts détectés mécaniquement** : défaut runtime restant (smoke-test) + findings de `lintGameHtml()` (`src/lib/lint.ts` : commentaires de réflexion du modèle, mélange `sort(() => Math.random() - 0.5)` biaisé, `console.log`, TODO/FIXME, fonctions déclarées deux fois — jamais bloquant, le lint ne juge pas la recevabilité). Chaque étape dégrade gracieusement : Director KO → repli single-shot `GAME_SYSTEM_PROMPT` ; QA KO → HTML du Builder. `normalizeGameHtml()` retire aussi `user-scalable=no`/`maximum-scale` de la viewport.
 - **Amélioration = session d'édition agentique** (`runEditSession` + `src/lib/editor.ts`) : le modèle ne réécrit PAS le jeu, il émet des blocs `<<<<<<< CHERCHER / ======= / >>>>>>> REMPLACER` (façon Aider) que le serveur applique (matching exact puis tolérant à l'indentation, détection d'ambiguïté). Échecs rapportés au modèle avec un extrait du passage réel le plus proche, jusqu'à 3 tours ; jeu invalide après édition → l'erreur lui est renvoyée pour correction ; repli en régénération complète en dernier recours. La ligne `RÉSUMÉ :` de sa réponse devient le message assistant du chat.
 
 Chaque amélioration archive l'état courant dans `game_versions` (restauration = nouvelle version, rien n'est perdu, `summary` = résumé du changement copié depuis `games.change_summary`) et écrit l'échange dans `game_messages`.
@@ -91,7 +95,7 @@ Tokens CSS `@theme` (sombre, accent violet `#8b7cff` / teal `#2dd4bf`) + classes
 ## Étapes à suivre pour une modification type
 
 1. Identifier le mode touché : création (prompt système, extraction) ou édition (protocole de blocs, `editor.ts`).
-2. Si le parsing/édition change : écrire ou étendre un test `npx tsx` dans `tests/` qui importe le module et couvre les cas limites (balises coupées, troncature, ancre ambiguë…). Ces modules sont purs, les tests sont faciles. Tests existants : `tests/validate.test.ts`, `tests/genEvents.test.ts`, `tests/authCore.test.ts` (à la racine : `npx -y tsx tests/<f>`), `tests/db.test.ts` et `tests/jobs.test.mts` (**depuis un répertoire temporaire vide** : `cd "$(mktemp -d)" && npx -y tsx /chemin/projet/tests/jobs.test.mts` — ils créent une base fraîche, jobs.test embarque son propre mock LLM). `tests/authApproval.test.ts` : 2 phases dans le même dossier temporaire (cf. son en-tête).
+2. Si le parsing/édition change : écrire ou étendre un test `npx tsx` dans `tests/` qui importe le module et couvre les cas limites (balises coupées, troncature, ancre ambiguë…). Ces modules sont purs, les tests sont faciles. Tests existants : `tests/validate.test.ts`, `tests/lint.test.ts` (lint de qualité + normalisation viewport), `tests/genEvents.test.ts`, `tests/authCore.test.ts` (à la racine : `npx -y tsx tests/<f>`), `tests/db.test.ts` et `tests/jobs.test.mts` (**depuis un répertoire temporaire vide** : `cd "$(mktemp -d)" && npx -y tsx /chemin/projet/tests/jobs.test.mts` — ils créent une base fraîche, jobs.test embarque son propre mock LLM). `tests/authApproval.test.ts` : 2 phases dans le même dossier temporaire (cf. son en-tête).
 3. Si le protocole d'événements ou l'état de génération change : `genEvents.ts` (types + réducteur) **et** l'émetteur (`generation.ts`/`jobs.ts`) **et** les surfaces (`GenerationProvider`, `GenerationPanel`, `GenerationOverlay`), dans le même commit.
 4. `npm run build` (type-check complet), puis smoke test sur `PORT=3457` ; pour un flux complet, mock LLM local + utilisateur/jeu de test injectés via l'API, **et nettoyer les données de test ensuite** (`DELETE FROM users WHERE username = 'test-…'` cascade tout).
 5. Le prompt système (`GAME_SYSTEM_PROMPT`) est le levier n°1 de la qualité des jeux : le modifier avec parcimonie, il encode des règles durement acquises (autonomie du fichier, sandbox, postMessage, structure pédagogique).

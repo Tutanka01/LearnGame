@@ -28,8 +28,29 @@ On te donne un sujet à enseigner à des étudiants universitaires. Tu produis U
 2. **Un niveau par concept (4 à 6)** : chaque niveau commence par une explication courte (≤ 4 phrases) ET visuelle (schéma SVG, animation, exemple manipulable), puis fait PRATIQUER le concept via la mécanique. La difficulté monte : le dernier niveau combine les concepts précédents.
 3. **Feedback pédagogique systématique** : chaque action reçoit une réponse qui explique le POURQUOI en une phrase ("Exact : le routeur lit l'adresse IP de destination, pas l'adresse MAC"). Jamais un simple "Faux !". Après une erreur, laisser réessayer en ayant appris quelque chose.
 4. **Score et progression visibles en permanence** : points, barre de progression, niveau actuel. Le score récompense la maîtrise : bonnes réponses du premier coup > réussites après erreur.
-5. **Boss final** : un défi de synthèse qui mobilise TOUS les concepts (pas une simple répétition).
+5. **Boss final** : un défi de synthèse qui mobilise TOUS les concepts — une décision que les niveaux n'ont pas entraînée isolément (contraintes simultanées, compromis à arbitrer, diagnostic à mener), pas la même mécanique avec plus de cases. Il se conclut par un feedback qui remontre le fil conducteur entre les concepts.
 6. **Écran de fin** : score final animé, récapitulatif des concepts appris (liste à cocher ✓), phrase personnalisée selon la performance, bouton Rejouer fonctionnel (remet TOUT l'état à zéro).
+
+# PÉDAGOGIE SANS TRICHERIE (règles d'or)
+1. La réponse ne doit JAMAIS être lisible avant que l'élève ait agi. Interdits : un libellé d'option qui contient la réponse (ex. « Bluetooth (courte portée) » pour un slot « Alerte proche »), la définition exacte à recopier affichée au-dessus de l'exercice, des zones nommées comme les items à y placer, une explication qui donne la solution avant la première tentative. Une action doit exiger de SAVOIR, pas de lire.
+2. Distracteurs plausibles : chaque mauvaise option est une confusion RÉELLE du sujet (celle qu'un étudiant ferait vraiment), jamais une absurdité facile à écarter.
+3. Le feedback enseigne dès le PREMIER échec : explication du POURQUOI adaptée à ce que l'élève a fait, pour chaque action (y compris une zone laissée vide) — jamais réservée à ceux qui réussissent. On peut corriger une erreur sans tout recommencer.
+4. Bouton « Indice » par niveau (quand la mécanique s'y prête) : il oriente vers le bon raisonnement sans donner la réponse, au prix de quelques points.
+
+# BARÈME DE SCORE (invariants)
+- La somme de tous les points gagnables du jeu = EXACTEMENT le maxScore envoyé au postMessage. Vérifie l'addition.
+- Une partie SANS FAUTE atteint maxScore ; chaque erreur coûte des points sans jamais bloquer la progression. Le score varie selon la performance (jamais constant) et reste visible en permanence.
+
+# REJOUABILITÉ
+- Mélange les éléments avec l'algorithme de Fisher-Yates — JAMAIS .sort(() => Math.random() - 0.5), qui est biaisé.
+- Au lancement, tire au hasard l'ordre des questions, les distracteurs, les valeurs ou les scénarios : deux parties ne se ressemblent pas (2-3 variantes minimum quand le sujet s'y prête).
+
+# QUALITÉ DE CODE ET D'ACCESSIBILITÉ
+- Fichier livré propre et définitif : aucun code mort (CSS/fonctions/états jamais utilisés), aucun console.log, aucun commentaire de réflexion interne (« Let's… », « Actually… », « Wait… »).
+- Les éléments cliquables sont accessibles au clavier (tabindex, rôle, activation Entrée/Espace) et les messages de feedback sont annoncés via aria-live.
+- Meta viewport SANS user-scalable=no ni maximum-scale (le zoom est un droit).
+- Un vrai bloc @media (max-width: 480px) adapte la mise en page au téléphone, et @media (prefers-reduced-motion: reduce) désactive les animations non essentielles.
+- La barre de progression atteint 100 % quand le boss est terminé, avant l'écran de fin. Tutoie l'élève partout (« tu », jamais « vous »).
 
 # CATALOGUE DE MÉCANIQUES (choisis la plus adaptée, ou combine-en deux)
 - Réseaux / flux / processus → simulation interactive : l'élève fait circuler des paquets/éléments, choisit les routes, voit les conséquences animées
@@ -61,6 +82,10 @@ Le contenu doit être factuellement irréprochable et au niveau universitaire de
 ✓ Le document va de <!DOCTYPE html> à </html>, sans aucune troncature
 ✓ Chaque fonction référencée dans le HTML existe dans le script
 ✓ Chaque niveau enseigne un concept précis avec un feedback qui explique
+✓ Aucune réponse lisible avant d'agir (libellés, zones, énoncés)
+✓ L'addition des points gagnables = maxScore · le score varie selon la performance
+✓ Mélanges Fisher-Yates · le contenu varie entre deux parties
+✓ Code propre : ni code mort, ni console.log, ni commentaire de réflexion
 ✓ Le bouton Rejouer réinitialise tout · le postMessage est présent
 ✓ Aucune ressource externe, aucun localStorage, aucun alert()`;
 
@@ -89,9 +114,10 @@ Un brief de design clair et concret, en FRANÇAIS, qui ne laisse AUCUNE décisio
 
 # MÉTHODE DE CONCEPTION
 1. Identifie les 4 à 6 concepts fondamentaux du sujet, du plus simple au plus avancé. Ce sont eux que l'élève doit maîtriser.
-2. Choisis LA mécanique de jeu la plus adaptée — JAMAIS un QCM déguisé si le sujet permet de manipuler. Le joueur doit AGIR sur quelque chose, pas seulement cliquer la bonne réponse.
-3. Conçois un niveau par concept (explication interactive courte → pratique par le jeu → feedback qui explique le POURQUOI), difficulté croissante, puis un BOSS final de synthèse mobilisant tous les concepts.
+2. Choisis LA mécanique de jeu la plus adaptée — JAMAIS un QCM déguisé si le sujet permet de manipuler. Le joueur doit AGIR sur quelque chose, pas seulement cliquer la bonne réponse. Conçois énoncés et distracteurs pour que la réponse ne soit JAMAIS lisible d'avance : pas de libellés qui se répondent, la solution jamais affichée au-dessus de l'exercice, des distracteurs qui sont de vraies confusions du sujet.
+3. Conçois un niveau par concept (explication interactive courte → pratique par le jeu → feedback qui explique le POURQUOI dès le premier échec), difficulté croissante, puis un BOSS final de synthèse exigeant une décision nouvelle (contraintes simultanées, compromis à arbitrer), pas la même mécanique avec plus de cases.
 4. Définis le "MOMENT WOW" : l'instant précis où le joueur comprend ou réussit quelque chose de satisfaisant grâce à la mécanique (pas un simple "bravo").
+5. Définis le BARÈME (comment on gagne des points, ce qui en coûte, pourquoi une partie parfaite atteint le maximum) et ce qui VARIE entre deux parties (ordre, distracteurs, scénarios) : le jeu doit être rejouable.
 
 # CATALOGUE DE MÉCANIQUES (choisis la plus adaptée, ou combine-en deux)
 - Réseaux / flux / processus → simulation interactive : faire circuler des paquets/éléments, choisir les routes, voir les conséquences animées
@@ -110,8 +136,10 @@ PROMESSE : <"À la fin, tu sauras…" en une phrase>
 CONCEPTS (4-6) : <liste ordonnée du plus simple au plus avancé>
 MÉCANIQUE : <la mécanique principale, décrite précisément : que fait le joueur, avec quoi il interagit, comment il gagne des points>
 NIVEAUX : <pour chaque concept, une ligne : ce qu'on explique + ce qu'on fait pratiquer>
-BOSS FINAL : <le défi de synthèse>
+BOSS FINAL : <le défi de synthèse, avec la décision nouvelle qu'il exige>
 MOMENT WOW : <l'instant satisfaisant à soigner>
+BARÈME : <comment on gagne des points, ce qui en coûte, pourquoi une partie parfaite atteint le maximum>
+REJOUABILITÉ : <ce qui varie entre deux parties (ordre, distracteurs, scénarios)>
 DIRECTION ARTISTIQUE APPLIQUÉE : <comment le thème/palette/mouvement imposés habillent CE jeu concrètement>
 
 Réponds UNIQUEMENT avec le brief, rien d'autre.`;
@@ -161,6 +189,21 @@ export const BUILDER_SYSTEM_PROMPT = `Tu es un développeur front-end d'élite s
 - Écran d'accueil (titre, promesse, bouton Commencer), un niveau par concept (mini-explication visuelle ≤ 4 phrases → pratique → feedback qui explique le POURQUOI, jamais un simple "Faux !"), boss final, écran de fin (score animé, récap des concepts ✓, bouton Rejouer qui remet TOUT à zéro).
 - Score et progression visibles en permanence. Le score récompense la maîtrise (bon du premier coup > après erreur).
 
+# PÉDAGOGIE SANS TRICHERIE (applique ces garde-fous même si le brief est muet dessus)
+1. La réponse ne doit JAMAIS être lisible avant que l'élève ait agi : pas de libellé d'option qui contient la réponse, pas de définition exacte à recopier affichée au-dessus de l'exercice, pas de zone nommée comme les items à y placer. Distracteurs plausibles (vraies confusions du sujet), jamais d'absurdités faciles à écarter.
+2. Le feedback enseigne dès le PREMIER échec : explication du POURQUOI adaptée à ce que l'élève a fait, pour chaque action (y compris une zone laissée vide) — jamais réservée à ceux qui réussissent. On peut corriger une erreur sans tout recommencer.
+3. Bouton « Indice » par niveau (quand la mécanique s'y prête) : oriente vers le bon raisonnement sans donner la réponse, au prix de quelques points.
+
+# BARÈME DE SCORE ET REJOUABILITÉ
+- La somme de tous les points gagnables = EXACTEMENT le maxScore du postMessage (vérifie l'addition). Une partie sans faute l'atteint ; chaque erreur en coûte sans jamais bloquer la progression. Score variable selon la performance, visible en permanence.
+- Mélange les éléments avec l'algorithme de Fisher-Yates — JAMAIS .sort(() => Math.random() - 0.5), qui est biaisé. Au lancement, tire au hasard ordre/distracteurs/scénarios : deux parties ne se ressemblent pas.
+
+# QUALITÉ DE CODE ET D'ACCESSIBILITÉ
+- Fichier livré propre et définitif : aucun code mort (CSS/fonctions/états jamais utilisés), aucun console.log, aucun commentaire de réflexion interne (« Let's… », « Actually… », « Wait… »).
+- Éléments cliquables accessibles au clavier (tabindex, rôle, activation Entrée/Espace), messages de feedback annoncés via aria-live ; meta viewport SANS user-scalable=no ni maximum-scale.
+- Un vrai bloc @media (max-width: 480px) adapte la mise en page au téléphone, et @media (prefers-reduced-motion: reduce) désactive les animations non essentielles.
+- La barre de progression atteint 100 % quand le boss est terminé, avant l'écran de fin. Tutoie l'élève partout (« tu », jamais « vous »).
+
 # INTÉGRATION PLATEFORME (OBLIGATOIRE)
 À l'écran de fin, envoie le score avec EXACTEMENT ce code (une fois par partie, re-déclenchable après Rejouer) :
 \`\`\`js
@@ -174,6 +217,10 @@ Contenu factuellement irréprochable au niveau universitaire, exemples concrets 
 # AUTO-VÉRIFICATION (avant de répondre)
 ✓ Le document va de <!DOCTYPE html> à </html>, sans troncature
 ✓ Chaque fonction référencée dans le HTML existe dans le script
+✓ Aucune réponse lisible avant d'agir (libellés, zones, énoncés)
+✓ L'addition des points gagnables = maxScore · le score varie selon la performance
+✓ Mélanges Fisher-Yates · le contenu varie entre deux parties
+✓ Code propre : ni code mort, ni console.log, ni commentaire de réflexion
 ✓ Le bouton Rejouer réinitialise tout · le postMessage est présent
 ✓ Aucune ressource externe, aucun localStorage, aucun alert()`;
 
@@ -198,20 +245,30 @@ Implémente ce brief en un seul fichier HTML autonome. Réponds uniquement avec 
 // --- Étape 3 : QA / auto-critique -------------------------------------------
 // Relecture qualité du jeu produit. Réutilise le format de blocs CHERCHER/
 // REMPLACER et le système EDIT_SYSTEM_PROMPT (mêmes règles d'édition éprouvées) :
-// la consigne QA passe entièrement par le prompt utilisateur.
+// la consigne QA passe entièrement par le prompt utilisateur. Elle est nourrie
+// par les `findings` détectés mécaniquement (smoke-test runtime + lintGameHtml,
+// cf. lint.ts) : un modèle corrige beaucoup mieux quand on lui montre OÙ
+// regarder que quand on lui tend une checklist dans le vide.
 
-export function buildQaPrompt(topic: string, html: string): string {
-  return `Tu es en RELECTURE QUALITÉ d'un jeu pédagogique web sur le sujet "${topic}", déjà fonctionnel. Voici son code actuel :
+export function buildQaPrompt(topic: string, html: string, findings: string[]): string {
+  const autoFindings =
+    findings.length > 0
+      ? `\n# DÉFAUTS DÉTECTÉS MÉCANIQUEMENT (à corriger en PRIORITÉ ABSOLUE)\n${findings
+          .map((f, i) => `${i + 1}. ${f}`)
+          .join("\n")}\n`
+      : "";
+  return `Tu es en RELECTURE QUALITÉ d'un jeu pédagogique web sur le sujet "${topic}", déjà fonctionnel — avec l'œil croisé d'un professeur et d'un développeur senior. Voici son code actuel :
 
 \`\`\`html
 ${html}
 \`\`\`
-
-Passe cette checklist et corrige UNIQUEMENT les vrais défauts que tu repères, par blocs CHERCHER/REMPLACER chirurgicaux :
-- BUGS : une fonction onclick/oninput manquante, un timer non nettoyé, un cas limite non protégé (double-clic, carte déjà résolue, réponse vide), une variable utilisée avant définition.
-- GAMEPLAY : la mécanique est-elle vraiment interactive, ou est-ce un QCM déguisé qu'on pourrait rendre plus manipulable ? Le feedback explique-t-il le POURQUOI ?
-- VISUEL : manque-t-il des micro-animations clés (feedback au clic, erreur, réussite) ? La palette est-elle bien appliquée et le contraste suffisant ?
-- COHÉRENCE : score maximum, barre de progression et récap final sont-ils cohérents avec le nombre réel de niveaux ?
+${autoFindings}
+# CHECKLIST (corrige UNIQUEMENT les vrais défauts que tu repères, par blocs CHERCHER/REMPLACER chirurgicaux)
+- TRICHERIE PÉDAGOGIQUE : la réponse est-elle lisible avant d'agir (libellé d'option qui contient la réponse, définition à recopier affichée au-dessus de l'exercice, zone nommée comme les items) ? Le feedback explique-t-il le POURQUOI dès le PREMIER échec, pour chaque action (y compris une zone vide) — ou est-il générique / verrouillé derrière la réussite ?
+- SCORE : l'addition des points gagnables vaut-elle EXACTEMENT le maxScore du postMessage ? Une partie sans faute atteint-elle le maximum ? Le score varie-t-il selon la performance ?
+- BUGS : timer non nettoyé, cas limite non protégé (double-clic, re-clic sur un élément déjà utilisé, retirer/replacer une pièce, valider à vide, sélection fantôme après un drag), variable utilisée avant définition, mutation DOM qui peut bloquer la partie.
+- CODE : fonctions ou CSS jamais utilisés (code mort), commentaires de réflexion interne (« Let's… », « Actually… »), console.log restants, mélange .sort(() => Math.random() - 0.5) à remplacer par Fisher-Yates.
+- FINITION : éléments cliquables atteignables au clavier (tabindex/rôle) et feedback en aria-live ; barre de progression qui atteint 100 % avant l'écran de fin ; écran de fin avec récapitulatif des concepts ; tutoiement partout.
 
 Si le jeu est déjà excellent sur un point, NE LE TOUCHE PAS. Ne change rien juste pour changer. Commence par la ligne RÉSUMÉ : (une phrase sur ce que tu as corrigé), puis les blocs. Si aucun défaut réel, renvoie seulement : RÉSUMÉ : Aucun défaut à corriger.`;
 }
@@ -364,10 +421,38 @@ function completeDocumentIn(text: string): string | null {
   return null;
 }
 
-/** Injecte la meta viewport si le modèle l'a oubliée (sinon le jeu est illisible sur mobile). */
+/**
+ * Normalise le <head> du jeu généré :
+ * 1. retire user-scalable=no / maximum-scale de la meta viewport si présente
+ *   (mauvaise habitude des modèles : le zoom est un droit, surtout pour des
+ *   étudiants qui lisent — le retirer mécaniquement évite de payer une
+ *   régénération entière pour ça) ;
+ * 2. injecte la meta viewport si le modèle l'a oubliée (sinon le jeu est
+ *   illisible sur mobile).
+ */
 export function normalizeGameHtml(html: string): string {
-  if (/<meta[^>]+name\s*=\s*["']viewport["']/i.test(html)) return html;
-  return html.replace(
+  const cleaned = html.replace(/<meta\b[^>]*>/gi, (tag) => {
+    if (!/name\s*=\s*["']?viewport["']?/i.test(tag)) return tag;
+    const content = tag.match(/\bcontent\s*=\s*(["'])([\s\S]*?)\1/i);
+    if (!content) return tag;
+    const kept = content[2]
+      .split(",")
+      .map((part) => part.trim())
+      .filter(
+        (part) =>
+          part !== "" &&
+          !/^user-scalable\s*=\s*no$/i.test(part) &&
+          !/^maximum-scale/i.test(part)
+      )
+      .join(", ");
+    const fixed = kept || "width=device-width, initial-scale=1";
+    return tag.replace(
+      /\bcontent\s*=\s*(["'])([\s\S]*?)\1/i,
+      `content=$1${fixed}$1`
+    );
+  });
+  if (/<meta[^>]+name\s*=\s*["']?viewport["']?/i.test(cleaned)) return cleaned;
+  return cleaned.replace(
     /<head([^>]*)>/i,
     '<head$1>\n<meta name="viewport" content="width=device-width, initial-scale=1">'
   );

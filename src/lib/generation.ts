@@ -28,6 +28,7 @@ import {
 import { parseEditResponse, applyOps } from "./editor";
 import { validateGameHtml } from "./validate";
 import { smokeTestGameHtml } from "./smoketest";
+import { lintGameHtml } from "./lint";
 import { pickArtDirection, describeArtDirection } from "./artDirection";
 import type { GenEvent, GenPhase } from "./genEvents";
 
@@ -334,21 +335,20 @@ async function runDirector(
  * et re-validé (syntaxe + runtime), ou null si rien d'exploitable — l'appelant
  * conserve alors le HTML du Builder (on ne régresse jamais).
  * Affichage : reste en phase "polishing" tout du long (pas d'aperçu live).
+ * La relecture est NOURRIE par `findings` : défauts détectés mécaniquement
+ * (smoke-test runtime + lintGameHtml) que le modèle corrige en priorité —
+ * une relecture ciblée corrige bien mieux qu'une checklist dans le vide.
  */
 async function runQaSession(
   emit: Emit,
   signal: AbortSignal,
   topic: string,
   html: string,
-  knownProblem: string | null
+  findings: string[]
 ): Promise<string | null> {
   const MAX_ROUNDS = 2;
   let current = html;
-  const userPrompt =
-    buildQaPrompt(topic, current) +
-    (knownProblem
-      ? `\n\nDÉFAUT DÉTECTÉ AUTOMATIQUEMENT, À CORRIGER EN PRIORITÉ : ${knownProblem}`
-      : "");
+  const userPrompt = buildQaPrompt(topic, current, findings);
   const conv: ChatMessage[] = [
     { role: "system", content: EDIT_SYSTEM_PROMPT },
     { role: "user", content: userPrompt },
@@ -359,7 +359,13 @@ async function runQaSession(
     emit({
       type: "status",
       message:
-        round === 1 ? "Relecture qualité et polissage…" : "Correction des derniers défauts…",
+        round === 1
+          ? findings.length > 0
+            ? `Relecture qualité — ${findings.length} défaut${
+                findings.length > 1 ? "s" : ""
+              } détecté${findings.length > 1 ? "s" : ""} à corriger…`
+            : "Relecture qualité et polissage…"
+          : "Correction des derniers défauts…",
     });
 
     let raw = "";
@@ -446,10 +452,17 @@ async function runCreatePipeline(
       );
   if ("error" in built) return built;
 
-  // Étape 3 : QA (best-effort). On part du dernier défaut runtime connu, s'il
-  // en reste un (le Builder a pu servir un repli légèrement imparfait).
+  // Étape 3 : QA (best-effort). On la nourrit de tout ce que les contrôles
+  // mécaniques ont détecté : un défaut runtime restant du Builder (s'il a été
+  // servi en repli) + les findings du lint de qualité (commentaires de
+  // réflexion, mélange biaisé, code mort évident…). Rien de bloquant : le QA
+  // juge, corrige ce qui vaut la peine, et le repli reste le HTML du Builder.
   const knownProblem = await smokeTestGameHtml(built.html);
-  const polished = await runQaSession(emit, signal, topic, built.html, knownProblem);
+  const findings = [
+    ...(knownProblem ? [`DÉFAUT RUNTIME : ${knownProblem}`] : []),
+    ...lintGameHtml(built.html),
+  ];
+  const polished = await runQaSession(emit, signal, topic, built.html, findings);
   return { html: polished ?? built.html };
 }
 

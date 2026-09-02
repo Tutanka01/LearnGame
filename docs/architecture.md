@@ -33,6 +33,7 @@ Les modules marqués « pur » n'importent ni Next, ni la base, ni le réseau : 
 | `editor.ts` | Moteur d'édition chirurgicale CHERCHER/REMPLACER (façon Aider) : `parseEditResponse()` (parseur ligne à ligne, tolère fences markdown et fins de ligne Windows), `applyOps()` (matching exact puis tolérant à l'indentation, détection d'ambiguïté, succès conservés même si d'autres échouent), `nearestExcerpt()` pour aider le modèle à corriger son ancre. |
 | `validate.ts` | `validateGameHtml()` : validation mécanique **avant toute sauvegarde** (syntaxe JS via `node:vm` sans exécution, autonomie, postMessage). Retourne `null` si tout est bon, sinon la raison du rejet en français, réutilisée telle quelle vers le modèle et l'élève. Serveur uniquement. |
 | `smoketest.ts` | Smoke-test runtime **conservateur**, après la validation syntaxique : câblage des handlers `onclick`/`oninput` (statique) puis boot du script sous jsdom (capture des exceptions de démarrage). Au moindre doute sur son propre outillage, laisse passer — un échec relance une tentative mais ne bloque jamais la sauvegarde. |
+| `lint.ts` | Lint de **qualité** (pur, regex uniquement) : commentaires de réflexion du modèle livrés dans le fichier, mélange biaisé `sort(() => Math.random() - 0.5)`, `console.log` restants, TODO/FIXME, fonctions déclarées deux fois. **Jamais bloquant** — ses findings nourrissent le prompt de QA (le lint ne juge pas la recevabilité du jeu, `validate.ts` le fait). |
 | `artDirection.ts` | Direction artistique **imposée** tirée d'une table curée (thème nommé, palette hex avec rôles sémantiques, polices système uniquement, langage de mouvement) : deux jeux sur le même sujet auront un look franchement différent. Pur. |
 | `clientApi.ts` | `apiFetch()` côté client : 401 → redirection `/login?next=…` (en conservant la destination), autres erreurs → `HttpError` portant le message français du serveur, affiché en toast. Pur (`"use client"`). |
 
@@ -154,8 +155,10 @@ single-shot d'origine :
    raison précise du rejet est renvoyée au modèle (et consigne « nettement plus
    COMPACT » si la réponse a été tronquée par le budget de tokens).
 3. **QA** (`runQaSession`) : relecture qualité par retouches CHERCHER/REMPLACER
-   chirurgicales (réutilise `editor.ts`), best-effort, 2 tours max. Si rien
-   d'exploitable, on garde le HTML du Builder.
+   chirurgicales (réutilise `editor.ts`), best-effort, 2 tours max. Elle est
+   **nourrie des défauts détectés mécaniquement** (smoke-test runtime + findings
+   du `lint.ts`) : une relecture ciblée corrige bien mieux qu'une checklist dans
+   le vide. Si rien d'exploitable, on garde le HTML du Builder.
 
 ### Édition agentique (`runEditSession` + `editor.ts`)
 
@@ -234,6 +237,17 @@ En aval :
   chargement sous jsdom sans exception). Un échec relance une tentative mais ne
   bloque jamais la sauvegarde (repli sur le meilleur candidat syntaxiquement
   valide).
+- `lintGameHtml()` (`lint.ts`, pur) complète la chaîne sur la **qualité** : il
+  liste par regex les défauts repérables sans exécution (commentaires de
+  réflexion du modèle, mélange `sort(() => Math.random() - 0.5)` biaisé,
+  `console.log` restants, TODO/FIXME, fonctions déclarées deux fois) sans jamais
+  bloquer la sauvegarde — ses findings sont injectés dans le prompt de QA avec
+  le défaut runtime éventuel. Dans le même esprit, `normalizeGameHtml()` retire
+  désormais `user-scalable=no`/`maximum-scale` de la meta viewport (le zoom est
+  un droit) au lieu de payer une régénération entière. Les prompts Director/
+  Builder/QA encodent les règles qualité correspondantes (réponse jamais
+  lisible avant d'agir, barème où l'addition des points gagnables = maxScore,
+  Fisher-Yates, feedback enseignant dès le premier échec, a11y minimale).
 
 ## 6. La persistance
 
