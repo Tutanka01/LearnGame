@@ -35,7 +35,8 @@ Dans `.env`, configure ton endpoint compatible OpenAI :
 | `OPENAI_API_KEY` | Clé API (laisser vide si l'endpoint n'en demande pas) |
 | `OPENAI_MODEL` | Nom du modèle à utiliser |
 | `OPENAI_MAX_TOKENS` | Budget de tokens par jeu (16000 recommandé — les jeux sont longs) |
-| `SESSION_SECRET` | Secret de signature des sessions (`openssl rand -hex 32`) |
+| `SESSION_SECURE_COOKIE` | Mettre à `0` si le site est servi en HTTP pur (sinon le cookie de session est jeté par le navigateur) |
+| `TRUST_PROXY` | Mettre à `1` derrière un reverse proxy qui écrase `x-forwarded-for` (fenêtres anti-abus par IP réelle) |
 | `ADMIN_USERNAMES` | Noms d'utilisateur (séparés par des virgules) promus admin : ils approuvent les inscriptions |
 
 > ⚠️ Choisis un modèle **fort en génération de code** (la qualité des jeux en dépend
@@ -69,3 +70,14 @@ nécessite Node ≥ 22.5).
 - `src/app/api/generate` — génération en streaming SSE
 - `src/app/api/games/[id]/play` — sert le HTML du jeu avec une CSP verrouillée
 - `data/learngame.db` — utilisateurs + jeux (SQLite natif Node)
+
+## Documentation
+
+| Document | Contenu |
+|---|---|
+| [`docs/architecture.md`](docs/architecture.md) | Vue d'ensemble du projet : modules, génération, persistance, rendu des jeux |
+| [`docs/authentification.md`](docs/authentification.md) | Le système de connexion/inscription : sessions, sécurité, endpoints, tests |
+| [`docs/guide-demarrage.md`](docs/guide-demarrage.md) | Prendre le projet en main : installation, `.env`, tests, Docker, dépannage |
+| [`docs/administration.md`](docs/administration.md) | Gérer les comptes : approuver, refuser, `ADMIN_USERNAMES`, réinitialiser un mot de passe |
+
+Pour les agents/contributeurs : `CLAUDE.md` reste la source de vérité sur les commandes et les contraintes non négociables.

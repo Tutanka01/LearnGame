@@ -3,26 +3,34 @@ import db, { User } from "@/lib/db";
 import { verifyPassword, needsRehash, hashPassword, burnScryptTime, setSessionCookie } from "@/lib/auth";
 import { assertSameOrigin, apiError, handleApi, readJson } from "@/lib/api";
 import { clientIp, rateLimit } from "@/lib/ratelimit";
-import { PASSWORD_MAX } from "@/lib/authValidate";
+import { PASSWORD_MAX, USERNAME_MAX } from "@/lib/authValidate";
 
 export async function POST(req: NextRequest) {
   return handleApi(async () => {
     assertSameOrigin(req);
 
+    // Fenêtre par adresse AVANT tout parsing : aucun travail coûteux payé par
+    // un client en excès (le corps peut être arbitrairement gros).
+    const ip = clientIp(req);
+    if (!rateLimit(`login-ip:${ip}`, 60, 60_000)) {
+      return apiError(429, "Trop de tentatives. Réessaie dans une minute.");
+    }
+
     const { username, password } = await readJson<{ username: string; password: string }>(req);
     if (
       typeof username !== "string" ||
       typeof password !== "string" ||
-      password.length > PASSWORD_MAX
+      password.length > PASSWORD_MAX ||
+      username.length > USERNAME_MAX
     ) {
       return apiError(400, "Requête invalide.");
     }
 
     const name = username.trim();
-    const ip = clientIp(req);
-    // Anti force brute, deux fenêtres complémentaires : par adresse (attaque
-    // distribuée sur plein de comptes) et par couple (adresse, compte visé).
-    if (!rateLimit(`login-ip:${ip}`, 20, 60_000) || !rateLimit(`login:${ip}:${name.toLowerCase()}`, 10, 60_000)) {
+    // Anti force brute ciblé : 10 tentatives par minute par compte visé. C'est
+    // LA fenêtre qui compte : indépendante de l'adresse, elle borne la vitesse
+    // de test des mots de passe d'un compte même en cas d'attaque distribuée.
+    if (!rateLimit(`login:${ip}:${name.toLowerCase()}`, 10, 60_000)) {
       return apiError(429, "Trop de tentatives. Réessaie dans une minute.");
     }
 

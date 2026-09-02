@@ -9,17 +9,18 @@ export async function POST(req: NextRequest) {
   return handleApi(async () => {
     assertSameOrigin(req);
 
+    // Fenêtre AVANT tout parsing : aucun travail coûteux payé par un client
+    // en excès (le corps peut être arbitrairement gros).
+    if (!rateLimit(`register:${clientIp(req)}`, 15, 60_000)) {
+      return apiError(429, "Trop de créations de compte. Réessaie dans une minute.");
+    }
+
     const { username, password } = await readJson<{
       username: string;
       password: string;
     }>(req);
     if (typeof username !== "string" || typeof password !== "string") {
       return apiError(400, "Requête invalide.");
-    }
-
-    // Anti-abus : 5 créations de compte par minute et par adresse.
-    if (!rateLimit(`register:${clientIp(req)}`, 5, 60_000)) {
-      return apiError(429, "Trop de créations de compte. Réessaie dans une minute.");
     }
 
     // Validation par le module partagé avec le formulaire (messages identiques).

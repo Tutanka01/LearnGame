@@ -66,7 +66,7 @@ export default function LoginForm() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [capsLock, setCapsLock] = useState(false);
+  const [capsLockField, setCapsLockField] = useState<"password" | "confirm" | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [banner, setBanner] = useState<{ kind: "error" | "info"; text: string } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -101,7 +101,11 @@ export default function LoginForm() {
       })
         .then((res) => res.json().catch(() => null))
         .then((data: { available?: boolean } | null) => {
-          setAvailability(data?.available ? "ok" : "taken");
+          // Trois états : true → disponible, false → pris, autre chose
+          // (429, 500, JSON inattendu) → on ne conclut RIEN, on se tait.
+          setAvailability(
+            data?.available === true ? "ok" : data?.available === false ? "taken" : "idle"
+          );
         })
         .catch(() => {
           if (!controller.signal.aborted) setAvailability("idle");
@@ -128,14 +132,25 @@ export default function LoginForm() {
     setShaking(true);
   }
 
-  /** Validation côté client, miroir exact des règles serveur. */
+  /**
+   * Validation côté client. En CONNEXION : seulement « non vide » — les comptes
+   * créés avant la refonte peuvent avoir un pseudo ou un mot de passe hors des
+   * règles actuelles (6 caractères, séparateur en bord…) ; c'est au serveur de
+   * vérifier les identifiants, pas leur forme. En INSCRIPTION : miroir exact
+   * des règles serveur (module partagé).
+   */
   function validateAll(): FieldErrors {
     const errors: FieldErrors = {};
+    if (mode === "login") {
+      if (!username.trim()) errors.username = "Entre ton nom d'utilisateur.";
+      if (!password) errors.password = "Entre ton mot de passe.";
+      return errors;
+    }
     const usernameError = validateUsername(username);
     if (usernameError) errors.username = usernameError;
     const passwordError = validatePassword(password);
     if (passwordError) errors.password = passwordError;
-    if (mode === "register" && !passwordError && confirm !== password) {
+    if (!passwordError && confirm !== password) {
       errors.confirm = "Les deux mots de passe ne correspondent pas.";
     }
     return errors;
@@ -147,8 +162,9 @@ export default function LoginForm() {
     else if (errors.confirm) confirmRef.current?.focus();
   }
 
-  const trackCapsLock = (e: React.KeyboardEvent<HTMLInputElement>) =>
-    setCapsLock(e.getModifierState?.("CapsLock") ?? false);
+  /** Suivi Verr. Maj pour un champ donné (keydown et keydown+keyup). */
+  const trackCapsLock = (field: "password" | "confirm") => (e: React.KeyboardEvent<HTMLInputElement>) =>
+    setCapsLockField(e.getModifierState?.("CapsLock") ? field : null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -196,11 +212,14 @@ export default function LoginForm() {
 
   const fieldClass = (hasError?: string) => `field ${hasError ? "field-error" : ""}`;
 
-  // Alerte Verr. Maj — id optionnel : le champ « Mot de passe » y référence
-  // via aria-describedby ; le champ « Confirmer » l'affiche sans doublon d'id.
-  const capsLockHint = (id?: string) =>
-    capsLock && (
-      <p id={id} className="flex items-center gap-1.5 text-xs text-amber-400 mt-1.5">
+  // Alerte Verr. Maj : rendue sous le champ actif, avec un id dédié référencé
+  // par son aria-describedby (jamais deux fois le même id dans le DOM).
+  const capsLockHint = (field: "password" | "confirm") =>
+    capsLockField === field && (
+      <p
+        id={`capslock-hint-${field}`}
+        className="flex items-center gap-1.5 text-xs text-amber-400 mt-1.5"
+      >
         <TriangleAlert size={12} aria-hidden /> Verr. Maj activé
       </p>
     );
@@ -335,7 +354,7 @@ export default function LoginForm() {
                   ]}
                 />
 
-                {nextPath && (
+                {nextPath && mode === "login" && (
                   <p className="text-xs text-[var(--color-ink-faint)] mb-4 text-center">
                     Connecte-toi pour reprendre là où tu t&apos;étais arrêté.
                   </p>
@@ -412,9 +431,9 @@ export default function LoginForm() {
                         type={showPassword ? "text" : "password"}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        onKeyDown={trackCapsLock}
-                        onKeyUp={trackCapsLock}
-                        onBlur={() => setCapsLock(false)}
+                        onKeyDown={trackCapsLock("password")}
+                        onKeyUp={trackCapsLock("password")}
+                        onBlur={() => setCapsLockField(null)}
                         autoComplete={mode === "login" ? "current-password" : "new-password"}
                         className={fieldClass(fieldErrors.password) + " pr-10"}
                         placeholder="••••••••"
@@ -422,7 +441,7 @@ export default function LoginForm() {
                         aria-describedby={
                           [
                             fieldErrors.password ? "password-error" : null,
-                            capsLock ? "capslock-hint" : null,
+                            capsLockField === "password" ? "capslock-hint-password" : null,
                           ]
                             .filter(Boolean)
                             .join(" ") || undefined
@@ -435,7 +454,7 @@ export default function LoginForm() {
                         {fieldErrors.password}
                       </p>
                     )}
-                    {capsLockHint("capslock-hint")}
+                    {capsLockHint("password")}
 
                     {mode === "register" && password && (
                       <div className="flex items-center gap-2.5 mt-2">
@@ -476,14 +495,21 @@ export default function LoginForm() {
                           type={showPassword ? "text" : "password"}
                           value={confirm}
                           onChange={(e) => setConfirm(e.target.value)}
-                          onKeyDown={trackCapsLock}
-                          onKeyUp={trackCapsLock}
-                          onBlur={() => setCapsLock(false)}
+                          onKeyDown={trackCapsLock("confirm")}
+                          onKeyUp={trackCapsLock("confirm")}
+                          onBlur={() => setCapsLockField(null)}
                           autoComplete="new-password"
                           className={fieldClass(fieldErrors.confirm) + " pr-10"}
                           placeholder="••••••••"
                           aria-invalid={!!fieldErrors.confirm}
-                          aria-describedby={fieldErrors.confirm ? "confirm-error" : undefined}
+                          aria-describedby={
+                            [
+                              fieldErrors.confirm ? "confirm-error" : null,
+                              capsLockField === "confirm" ? "capslock-hint-confirm" : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" ") || undefined
+                          }
                         />
                         {eyeToggle}
                       </div>
@@ -492,7 +518,7 @@ export default function LoginForm() {
                           {fieldErrors.confirm}
                         </p>
                       )}
-                      {!fieldErrors.confirm && capsLockHint()}
+                      {capsLockHint("confirm")}
                     </div>
                   )}
 
