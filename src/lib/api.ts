@@ -2,8 +2,9 @@
 // JSON ({ error: string }), des gardes réutilisables (connexion, propriété)
 // et les réponses HTML des endpoints /play (servis dans une iframe).
 
-import db, { Game, User } from "./db";
+import db, { Game } from "./db";
 import { getCurrentUser } from "./auth";
+import type { SessionUser } from "./auth";
 import { ApiError } from "./errors";
 
 export { ApiError };
@@ -12,20 +13,43 @@ export function apiError(status: number, message: string): Response {
   return Response.json({ error: message }, { status });
 }
 
+/**
+ * Défense CSRF en profondeur (en plus du cookie SameSite=Lax) : les routes
+ * d'authentification refusent toute requête déclarée cross-site, ou dont
+ * l'origine ne correspond pas à l'hôte servi. Les clients sans en-têtes de
+ * navigateur (curl, tests) ne sont pas concernés.
+ */
+export function assertSameOrigin(req: Request): void {
+  if (req.headers.get("sec-fetch-site") === "cross-site") {
+    throw new ApiError(403, "Origine non autorisée.");
+  }
+  const origin = req.headers.get("origin");
+  if (!origin) return;
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  if (!host) return;
+  let originHost: string | null = null;
+  try {
+    originHost = new URL(origin).host;
+  } catch {
+    originHost = null;
+  }
+  if (originHost !== host) throw new ApiError(403, "Origine non autorisée.");
+}
+
 /** Lit le corps JSON sans jeter : un corps invalide devient un objet vide. */
 export async function readJson<T extends object>(req: Request): Promise<Partial<T>> {
   return (await req.json().catch(() => ({}))) as Partial<T>;
 }
 
-/** Utilisateur connecté, sinon ApiError 401. */
-export async function requireUser(): Promise<User> {
+/** Utilisateur connecté (sans donnée sensible), sinon ApiError 401. */
+export async function requireUser(): Promise<SessionUser> {
   const user = await getCurrentUser();
   if (!user) throw new ApiError(401, "Non connecté.");
   return user;
 }
 
 /** Utilisateur connecté ET admin, sinon ApiError 401/403. */
-export async function requireAdmin(): Promise<User> {
+export async function requireAdmin(): Promise<SessionUser> {
   const user = await requireUser();
   if (user.role !== "admin") throw new ApiError(403, "Réservé aux administrateurs.");
   return user;

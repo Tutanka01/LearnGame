@@ -1,72 +1,24 @@
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "crypto";
+// Couche auth côté Next : lecture/écriture du cookie de session.
+// Toute la logique (crypto, base) vit dans session.ts — module pur et testable.
+// Ce fichier ne fait que coller le cookie httpOnly sur le noyau.
+
 import { cookies } from "next/headers";
-import db, { User } from "./db";
+import { createSession, getSessionUser, revokeSession, SESSION_COOKIE } from "./session";
+import type { SessionUser } from "./session";
 
-const SESSION_COOKIE = "lg_session";
-const SESSION_DAYS = 30;
-
-/** Au-delà, scrypt devient coûteux : refusé AVANT tout calcul. */
-export const PASSWORD_MAX_LENGTH = 256;
-
-// Secret évalué paresseusement (pas au build) : en production, l'absence de
-// SESSION_SECRET est une faute de configuration fatale — n'importe qui pourrait
-// forger un cookie de session avec le secret de développement.
-let cachedSecret: string | null = null;
-function getSecret(): string {
-  if (cachedSecret) return cachedSecret;
-  const fromEnv = process.env.SESSION_SECRET?.trim();
-  if (fromEnv) return (cachedSecret = fromEnv);
-  if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "SESSION_SECRET doit être défini en production : sans lui, les sessions sont forgeables."
-    );
-  }
-  return (cachedSecret = "dev-secret-change-me");
-}
-
-// --- Mots de passe (scrypt, pas de dépendance native supplémentaire) ---
-
-export function hashPassword(password: string): string {
-  if (password.length > PASSWORD_MAX_LENGTH) {
-    throw new Error(`Mot de passe trop long (maximum ${PASSWORD_MAX_LENGTH} caractères).`);
-  }
-  const salt = randomBytes(16).toString("hex");
-  const hash = scryptSync(password, salt, 64).toString("hex");
-  return `${salt}:${hash}`;
-}
-
-export function verifyPassword(password: string, stored: string): boolean {
-  if (password.length > PASSWORD_MAX_LENGTH) return false;
-  const [salt, hash] = stored.split(":");
-  if (!salt || !hash) return false;
-  const candidate = scryptSync(password, salt, 64);
-  const expected = Buffer.from(hash, "hex");
-  return candidate.length === expected.length && timingSafeEqual(candidate, expected);
-}
-
-// --- Sessions (cookie signé HMAC : userId.expiry.signature) ---
-
-function sign(payload: string): string {
-  return createHmac("sha256", getSecret()).update(payload).digest("hex");
-}
-
-export function createSessionToken(userId: number): string {
-  const expiry = Date.now() + SESSION_DAYS * 24 * 3600 * 1000;
-  const payload = `${userId}.${expiry}`;
-  return `${payload}.${sign(payload)}`;
-}
-
-export function parseSessionToken(token: string): number | null {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const [userId, expiry, signature] = parts;
-  const payload = `${userId}.${expiry}`;
-  const expected = sign(payload);
-  if (signature.length !== expected.length) return null;
-  if (!timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
-  if (Date.now() > Number(expiry)) return null;
-  return Number(userId);
-}
+// Ré-exports : les modules existants importent le noyau depuis "@/lib/auth".
+export {
+  hashPassword,
+  verifyPassword,
+  needsRehash,
+  burnScryptTime,
+  createSession,
+  getSessionUser,
+  revokeSession,
+  revokeAllUserSessions,
+} from "./session";
+export type { SessionUser } from "./session";
+export { SESSION_COOKIE } from "./session";
 
 /**
  * Faut-il marquer le cookie de session `secure` (réservé HTTPS) ?
@@ -96,28 +48,38 @@ function shouldUseSecureCookie(req?: Request): boolean {
   return process.env.NODE_ENV === "production";
 }
 
+/**
+ * Ouvre une session : création en base (token neuf à chaque connexion) puis
+ * pose du cookie httpOnly. La durée du cookie reflète celle de la session.
+ */
 export async function setSessionCookie(userId: number, req?: Request) {
+  const userAgent = req?.headers.get("user-agent") ?? "";
+  const { token, expiresAt } = createSession(userId, userAgent);
   const store = await cookies();
-  store.set(SESSION_COOKIE, createSessionToken(userId), {
+  store.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
-    maxAge: SESSION_DAYS * 24 * 3600,
+    maxAge: Math.max(1, Math.floor((expiresAt - Date.now()) / 1000)),
     secure: shouldUseSecureCookie(req),
   });
 }
 
+/**
+ * Déconnexion complète : révocation de la session en base (le cookie volé ne
+ * vaut plus rien) puis suppression du cookie. Idempotent.
+ */
 export async function clearSessionCookie() {
   const store = await cookies();
+  const token = store.get(SESSION_COOKIE)?.value;
+  if (token) revokeSession(token);
   store.delete(SESSION_COOKIE);
 }
 
-export async function getCurrentUser(): Promise<User | null> {
+/** Utilisateur courant (jamais de hash de mot de passe dans l'objet retourné). */
+export async function getCurrentUser(): Promise<SessionUser | null> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return null;
-  const userId = parseSessionToken(token);
-  if (userId === null) return null;
-  const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as User | undefined;
-  return user ?? null;
+  return getSessionUser(token);
 }

@@ -173,6 +173,23 @@ function createDb(): DatabaseSync {
     db.exec("CREATE UNIQUE INDEX idx_scores_unique ON scores(game_id, user_id);");
   }
 
+  // Sessions d'authentification en base : révocables (déconnexion, rejet,
+  // changement de mot de passe) et pivotées à chaque connexion. La table ne
+  // stocke que le SHA-256 du token — la fuite de la base ne permet pas de
+  // forger un cookie. Les horodatages sont en epoch ms (comparaison fiable).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at INTEGER NOT NULL,
+      last_seen_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      user_agent TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions(expires_at);
+  `);
+
   // Inscription avec approbation admin : role ('user'|'admin') et status
   // ('pending'|'approved'). Défaut 'approved' sur la colonne pour ne pas bloquer
   // les comptes déjà en base — les nouveaux comptes reçoivent 'pending' à

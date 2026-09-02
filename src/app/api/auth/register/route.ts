@@ -1,39 +1,41 @@
 import { NextRequest } from "next/server";
 import db from "@/lib/db";
-import { hashPassword, setSessionCookie, PASSWORD_MAX_LENGTH } from "@/lib/auth";
-import { apiError, handleApi, readJson } from "@/lib/api";
+import { hashPassword, setSessionCookie } from "@/lib/auth";
+import { assertSameOrigin, apiError, handleApi, readJson } from "@/lib/api";
 import { clientIp, rateLimit } from "@/lib/ratelimit";
+import { validateUsername, validatePassword } from "@/lib/authValidate";
 
 export async function POST(req: NextRequest) {
   return handleApi(async () => {
+    assertSameOrigin(req);
+
     const { username, password } = await readJson<{
       username: string;
       password: string;
     }>(req);
-
     if (typeof username !== "string" || typeof password !== "string") {
       return apiError(400, "Requête invalide.");
     }
+
+    // Anti-abus : 5 créations de compte par minute et par adresse.
     if (!rateLimit(`register:${clientIp(req)}`, 5, 60_000)) {
       return apiError(429, "Trop de créations de compte. Réessaie dans une minute.");
     }
 
+    // Validation par le module partagé avec le formulaire (messages identiques).
     const name = username.trim();
-    if (name.length < 3 || name.length > 32 || !/^[\p{L}\p{N}_.-]+$/u.test(name)) {
-      return apiError(400, "Nom d'utilisateur : 3 à 32 caractères (lettres, chiffres, _ . -).");
-    }
-    if (password.length < 6) {
-      return apiError(400, "Le mot de passe doit faire au moins 6 caractères.");
-    }
-    if (password.length > PASSWORD_MAX_LENGTH) {
-      return apiError(400, `Le mot de passe ne peut pas dépasser ${PASSWORD_MAX_LENGTH} caractères.`);
-    }
+    const usernameError = validateUsername(name);
+    if (usernameError) return apiError(400, usernameError);
+    const passwordError = validatePassword(password);
+    if (passwordError) return apiError(400, passwordError);
 
     const existing = db.prepare("SELECT id FROM users WHERE username = ?").get(name);
     if (existing) {
       return apiError(409, "Ce nom d'utilisateur est déjà pris.");
     }
 
+    // Approbation : les comptes de ADMIN_USERNAMES naissent admin ; les autres
+    // attendent la validation d'un enseignant avant leur première connexion.
     const adminUsernames = (process.env.ADMIN_USERNAMES ?? "")
       .split(",")
       .map((u) => u.trim().toLowerCase())
@@ -42,14 +44,22 @@ export async function POST(req: NextRequest) {
     const role = isAdmin ? "admin" : "user";
     const status = isAdmin ? "approved" : "pending";
 
-    const result = db
-      .prepare("INSERT INTO users (username, password_hash, role, status) VALUES (?, ?, ?, ?)")
-      .run(name, hashPassword(password), role, status);
-
-    const pending = status === "pending";
-    if (!pending) {
-      await setSessionCookie(Number(result.lastInsertRowid), req);
+    try {
+      const result = db
+        .prepare("INSERT INTO users (username, password_hash, role, status) VALUES (?, ?, ?, ?)")
+        .run(name, hashPassword(password), role, status);
+      const pending = status === "pending";
+      if (!pending) {
+        await setSessionCookie(Number(result.lastInsertRowid), req);
+      }
+      return Response.json({ ok: true, pending });
+    } catch (err) {
+      // Course entre deux inscriptions du même nom : la contrainte UNIQUE
+      // tranche — on répond 409 plutôt qu'une erreur serveur brutale.
+      if (err instanceof Error && err.message.includes("UNIQUE constraint failed")) {
+        return apiError(409, "Ce nom d'utilisateur est déjà pris.");
+      }
+      throw err;
     }
-    return Response.json({ ok: true, pending });
   });
 }

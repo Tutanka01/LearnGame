@@ -247,6 +247,22 @@ body {
   background: var(--color-surface);
   box-shadow: 0 0 0 3px rgba(139, 124, 255, 0.18);
 }
+/* Variante en erreur : filet rouge, focus assorti (formulaire d'authentification). */
+.field.field-error {
+  border-color: rgba(248, 113, 113, 0.55);
+}
+.field.field-error:focus {
+  border-color: #f87171;
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.16);
+}
+
+/* Autofill sombre : sans cela, Chrome repeint le champ en fond clair. */
+input:-webkit-autofill {
+  -webkit-text-fill-color: var(--color-ink);
+  -webkit-box-shadow: 0 0 0 1000px var(--color-surface-2) inset;
+  caret-color: var(--color-ink);
+  transition: background-color 9999s ease-out;
+}
 
 /* ============================================================================
    Segmented control — piste + pouce glissant (le composant calcule l'offset).
@@ -336,12 +352,22 @@ body {
     transform: translate(-50%, 0) scale(1);
   }
 }
+/* Secousse au rejet d'une tentative de connexion/inscription. */
+@keyframes shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-3px); }
+  40%, 60% { transform: translateX(3px); }
+}
 
 .float-in {
   animation: float-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 .pulse-glow {
   animation: pulse-glow 2.2s ease-in-out infinite;
+}
+.shake {
+  animation: shake 0.4s ease both;
 }
 .toast-in {
   animation: toast-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;

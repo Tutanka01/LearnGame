@@ -121,7 +121,7 @@ class JobRunner {
 
   // --- Création / exécution ----------------------------------------------------
 
-  createJob(user: User, payload: JobPayload): JobRow {
+  createJob(user: Pick<User, "id">, payload: JobPayload): JobRow {
     this.ensureSwept();
     this.gcOldJobs();
     const id = randomUUID();

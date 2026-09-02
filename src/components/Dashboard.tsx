@@ -247,7 +247,9 @@ export default function Dashboard({
   );
 
   async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+    // Révocation côté serveur (session en base) puis retour à la connexion,
+    // quoi qu'il arrive — même si le réseau échoue au moment de la demande.
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     router.push("/login");
     router.refresh();
   }
