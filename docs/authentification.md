@@ -8,13 +8,16 @@ Documentation du système d'authentification de LearnGame (Next.js 15, TypeScrip
 |---|---|
 | `src/lib/session.ts` | **Noyau pur** : hachage scrypt versionné, sessions en base (`createSession`, `getSessionUser`, `revokeSession`, `revokeAllUserSessions`). |
 | `src/lib/auth.ts` | **Glue Next** : pose/lit le cookie `lg_session` (`setSessionCookie`, `clearSessionCookie`, `getCurrentUser`) ; ré-exporte le noyau. |
-| `src/lib/authValidate.ts` | **Règles partagées client/serveur** : `validateUsername`, `validatePassword`, `passwordStrength` + constantes (pseudo 3–32, mot de passe 8–256). |
+| `src/lib/authValidate.ts` | **Règles partagées client/serveur** : `validateUsername`, `validatePassword`, `passwordStrength`, `isSafeLocalPath` + constantes (pseudo 3–32, mot de passe 8–256). |
 | `src/lib/api.ts` | Gardes de routes : `requireUser()`, `requireAdmin()`, `assertSameOrigin()` (CSRF), `handleApi()` (ApiError → JSON `{ error }`). |
 | `src/lib/ratelimit.ts` | Limiteur en mémoire (fenêtre fixe) + `clientIp()` (XFF uniquement si `TRUST_PROXY=1`, sinon clé globale "local"). |
-| `src/app/api/auth/*`, `src/app/api/me` | Les 5 endpoints (section 6). |
-| `src/app/login/page.tsx` + `src/components/auth/LoginForm.tsx` | Formulaire connexion/inscription (section 8). |
-| `src/lib/db.ts` | Table `auth_sessions`, colonnes `users.role`/`users.status`, `promoteAdmins()`. |
-| `tests/authCore.test.ts`, `tests/authApproval.test.ts` | Tests ad hoc (section 9). |
+| `src/lib/oidc.ts` | **Noyau SSO (OIDC)** : configuration, flux persistés (state/nonce/PKCE), résolution de compte (création/rattachement), fin de flux. Utilise `openid-client` (seule dépendance d'authentification, choisie explicitement). |
+| `src/lib/oidcMessages.ts` | Codes d'erreur SSO fermés + messages français — partagés callback ↔ formulaire. |
+| `src/app/api/auth/oidc/*` | Les 2 routes du flux SSO (`start`, `callback`). |
+| `src/app/api/auth/*`, `src/app/api/me` | Les 5 endpoints historiques (section 6). |
+| `src/app/login/page.tsx` + `src/components/auth/LoginForm.tsx` | Formulaire connexion/inscription + bouton SSO (section 9). |
+| `src/lib/db.ts` | Table `auth_sessions`, table `oidc_flows`, colonnes `users.role`/`users.status`/`users.email`/`users.oidc_issuer`/`users.oidc_sub`, `promoteAdmins()`, `isAdminUsername()`. |
+| `tests/authCore.test.ts`, `tests/authApproval.test.ts`, `tests/oidcCore.test.ts`, `tests/mock-idp.mjs` | Tests ad hoc (sections 10 et 11). |
 
 `getCurrentUser()` retourne un `SessionUser` **sanitisé** (`id`, `username`, `role`, `status`, `created_at` — jamais `password_hash`) : c'est le type attendu par tous les appelants. `authValidate.ts` étant importé par les routes API **et** le formulaire, les messages affichés sont exactement ceux du serveur.
 
@@ -99,7 +102,7 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
 - **`clientIp()` et `TRUST_PROXY`** : `x-forwarded-for` est forgable par le client. Sans `TRUST_PROXY=1` (proxy de confiance qui ÉCRASE l'en-tête), tous les clients partagent la clé `"local"` — les plafonds par IP deviennent des plafonds globaux, dimensionnés pour une classe ; la fenêtre par compte reste intacte. Les fenêtres sont prises AVANT tout parsing du corps (aucun travail coûteux payé par un client en excès).
 - **Bornes d'entrée** (`authValidate.ts`, appliquées serveur et affichées client) : mot de passe **8 à 256** caractères ; pseudo **3 à 32** caractères (lettres/chiffres Unicode accentés compris, `_ . -` interdits aux extrémités). `hashPassword()` jette au-delà de 256.
 
-## 6. Les 5 endpoints d'auth
+## 6. Les endpoints d'authentification locale
 
 Toute erreur suit le format `{ "error": "message" }` (`handleApi`/`apiError`).
 
@@ -134,9 +137,99 @@ Plateforme sur invitation : une inscription crée un compte **`pending`** qui ne
   - `POST /api/admin/users/[id]/approve` → `UPDATE users SET status='approved' WHERE id=? AND status='pending'` — le guard rend l'opération idempotente (déjà traité → **404** « Compte introuvable ou déjà traité. »).
   - `POST /api/admin/users/[id]/reject` → `DELETE FROM users WHERE id=? AND status='pending'` — le compte est supprimé, le nom redevient disponible.
 
-## 8. Le formulaire `/login`
+## 8. La connexion SSO par OIDC (ex. : le CAS de l'université)
 
-`src/app/login/page.tsx` est un server component `force-dynamic` : redirige les connectés vers `/`, rend `LoginForm` dans un `<Suspense>` (lecture des search params). `LoginForm` gère les deux modes (Connexion / Inscription) et POSTe vers `/api/auth/login` ou `/register`.
+Le bouton « Se connecter via le SSO de l'université » apparaît sur `/login` dès que
+`OIDC_ISSUER`, `OIDC_CLIENT_ID` et `OIDC_CLIENT_SECRET` sont renseignés. Implémentation :
+flux **authorization code + PKCE S256** via la librairie [`openid-client`](https://github.com/panva/openid-client)
+v6 (référence du domaine, certifiée OpenID) — c'est la SEULE dépendance d'authentification
+du projet, adoptée sciemment pour la vérification cryptographique des jetons.
+
+### 8.1 Cycle du flux
+
+```
+GET /api/auth/oidc/start?next=…
+  ├─ rate limit oidc-start:<ip> (120/min)
+  ├─ flow persisté en base (oidc_flows) : SHA-256(state), verifier PKCE, nonce,
+  │   redirect_uri, destination post-login — TTL 10 min, purge au passage
+  ├─ cookie lg_oidc_flow = SHA-256(state) (httpOnly, lax, 10 min)
+  └─ 302 → page d'identification de l'université
+                    │ (l'étudiant s'identifie chez l'université)
+                    ▼
+GET /api/auth/oidc/callback?code=…&state=…
+  ├─ rate limit oidc-cb:<ip> (120/min)
+  ├─ cookie de binding vérifié en temps constant ↔ state (anti login-CSRF)
+  ├─ flux consommé en transaction (SINGLE-USE : un rejouage échoue)
+  ├─ échange du code (redirect_uri = celui STOCKÉ dans le flux, PKCE)
+  ├─ ID token validé par openid-client (signature JWKS, iss, aud, exp, nonce)
+  │   + allowlist locale stricte : alg asymétrique uniquement (none/HS* refusés)
+  ├─ userinfo (sub vérifié) → identité { sub, pseudo, e-mail, email_verified }
+  ├─ résolution de compte (8.2) → compte « approved » requis
+  └─ session locale (createSession + cookie lg_session) → redirection next_path
+```
+
+Toute erreur redirige vers `/login?error=<code fermé>` (`oidcMessages.ts`) — jamais
+de texte venu de l'IdP dans l'URL ; les détails sont journalisés côté serveur.
+
+### 8.2 Résolution de l'identité → compte (politique retenue)
+
+1. **Identité déjà liée** (`users.oidc_issuer` + `users.oidc_sub`) → son compte ;
+   l'e-mail est rafraîchi si l'IdP en annonce un nouveau.
+2. **Rattachement par e-mail** : si l'IdP délivre un e-mail *pas explicitement non
+   vérifié* (`email_verified` peut être absent — le CAS l'omet souvent) et qu'un
+   compte local porte ce même e-mail (comparaison insensible à la casse), le compte
+   local est **rattaché** (une seule identité fédérée par compte, index unique
+   partiel). Pas de doublon, le mot de passe local reste utilisable, et un compte
+   « en attente » reste en attente (le SSO ne contourne pas l'approbation).
+3. **Création** : compte immédiatement **approuvé** (l'identité est vérifiée par
+   l'université), `password_hash = ''` — **aucune connexion locale possible** tant
+   qu'un enseignant ne pose pas de mot de passe. Le pseudo est dérivé du
+   `preferred_username` (sinon e-mail, sinon nom), normalisé selon les règles de
+   `authValidate.ts`, suffixé `-2`, `-3`… en cas de collision (jamais d'usurpation
+   par pseudo). `ADMIN_USERNAMES` s'applique au nom final (journal bruyant).
+
+Confidentialité : ni l'access token ni un refresh token ne sont conservés (scopes
+`openid profile email` seulement) — ils servent à l'appel userinfo puis sont jetés.
+
+### 8.3 Sécurité — défenses en place
+
+- **PKCE S256** même en client confidentiel ; verifier côté serveur, jamais exposé.
+- **`state` single-use** stocké haché (SHA-256) en base, TTL 10 min, purge à chaque
+  départ de flux ; sa consommation supprime la ligne (callback rejoué = refusé).
+- **Binding flux ↔ navigateur** (cookie `lg_oidc_flow`) : une URL de callback
+  obtenue par un tiers (ayant fait SON identification) ne connecte pas la victime —
+  l'attaquant ne peut pas poser de cookie sur notre domaine (RFC 9700 §4.5/4.8).
+- **`nonce`** lié à la réponse (vérifié par la librairie), **signature du ID token**
+  vérifiée contre le JWKS de l'émetteur, `iss` validé contre l'issuer configuré
+  (anti mix-up), `sub` du userinfo comparé à celui du ID token.
+- **`redirect_uri` de l'échange = celui stocké dans le flux** : correspondance
+  exacte avec la demande d'autorisation, indépendante des en-têtes de proxy.
+- **Fenêtres anti-abus larges** (120/min) : sans `TRUST_PROXY` la clé est globale —
+  dimensionnée pour une salle de classe entière qui clique dans la même minute.
+- **Déconnexion strictement locale** (choix documenté) : le SSO ne déconnecte pas
+  la session universitaire (ça déconnecterait toutes les autres applications).
+
+### 8.4 Configuration et déclaration du client
+
+```bash
+OIDC_ISSUER=https://sso.univ-pau.fr/cas/oidc   # sans /.well-known/openid-configuration
+OIDC_CLIENT_ID=…                               # fourni par le service SSO
+OIDC_CLIENT_SECRET=…                           # client CONFIDENTIEL
+# OIDC_REDIRECT_URI=https://learngame.mondomaine.fr/api/auth/oidc/callback  (recommandé en prod)
+# OIDC_SCOPES=openid profile email
+# OIDC_ALLOWED_DOMAINS=univ-pau.fr             # suffixes, sous-domaines inclus ; vide = tous
+# OIDC_TOKEN_AUTH=post                         # ou basic si l'IdP ne liste pas client_secret_post
+```
+
+L'URI de rappel `https://…/api/auth/oidc/callback` doit être **déclarée auprès du
+service SSO de l'université** (registre CAS : client confidentiel, flux authorization
+code, PKCE). En production, fixer `OIDC_REDIRECT_URI` explicitement : `next start`
+réécrit `req.url` en `localhost`, donc la dérivation automatique n'est fiable que
+sans proxy (`Host` du navigateur) ou avec `TRUST_PROXY=1` (cf. `redirectOrigin`).
+
+## 9. Le formulaire `/login`
+
+`src/app/login/page.tsx` est un server component `force-dynamic` : redirige les connectés vers `/`, rend `LoginForm` dans un `<Suspense>` (lecture des search params). `LoginForm` gère les deux modes (Connexion / Inscription), le bouton SSO (section 8) et les erreurs de callback SSO (`?error=`).
 
 - **Validation en direct** : importe `validateUsername`, `validatePassword`, `passwordStrength` de `authValidate.ts`. En INSCRIPTION : miroir exact des règles serveur, erreurs de champ sous chaque saisie (`aria-invalid` + `aria-describedby`), bannière pour les réponses serveur, secousse (classe `shake`) au rejet. En CONNEXION : seulement « non vide » — les comptes créés avant la refonte peuvent avoir un pseudo ou un mot de passe hors des règles actuelles (6 caractères, séparateur en bord) ; c'est au serveur de vérifier les identifiants, pas leur forme.
 - **Disponibilité du pseudo** : en inscription, requête debouncée (400 ms) et annulable (`AbortController`) vers `/api/auth/username-available`, seulement pour un nom déjà bien formé ; statut annoncé en `aria-live="polite"`.
@@ -153,7 +246,7 @@ function safeNext(): string {
 }
 ```
 
-## 9. Comment tester
+## 10. Comment tester
 
 Pas de framework : scripts TS exécutés avec `npx tsx`, harnais maison.
 
@@ -164,6 +257,14 @@ cd "$(mktemp -d)" && npx -y tsx /Users/makhal/Nextcloud/mo/Projects/LearnGame/te
 ```
 
 Couvre : format versionné, roundtrip bon/mauvais mot de passe, ancien format + `needsRehash`, hash malformé sans exception, `burnScryptTime`, clé stockée = SHA-256, session expirée purgée, compte `pending` refusé, throttle `last_seen_at` (1 h), révocations unitaire et globale, `user_agent` tronqué à 180.
+
+**SSO OIDC** — `tests/oidcCore.test.ts` (25 vérifications) : helpers purs (chemins sûrs, candidats de pseudo, filtre de domaine, `email_verified` à trois états, allowlist d'alg), flux persistés (state single-use, expiration) et résolution de compte (création approuvée sans mot de passe, reconnexion, collision de pseudo, rattachement par e-mail — y compris sans le claim `email_verified` —, compte en attente, ADMIN_USERNAMES). Le client `openid-client` est pré-chargé dans le cache avec des métadonnées inline : **aucun réseau**.
+
+```bash
+cd "$(mktemp -d)" && npx -y tsx /Users/makhal/Nextcloud/mo/Projects/LearnGame/tests/oidcCore.test.ts
+```
+
+**Smoke SSO de bout en bout** — `tests/mock-idp.mjs` joue un IdP OIDC complet en HTTPS local (découverte, JWKS RS256, autorisation, token endpoint avec vérification PKCE + `client_secret_post`, userinfo) ; voir l'en-tête du fichier pour la recette (certificat auto-signé + `NODE_EXTRA_CA_CERTS`, puis suivre la redirection de `/api/auth/oidc/start`). L'app doit tourner **depuis un répertoire séparé** (symlinks `.next`/`node_modules`) pour ne pas toucher la vraie base.
 
 **Approbation** — `tests/authApproval.test.ts`, **2 phases dans le même dossier temporaire** (la phase 2 simule un redémarrage avec `ADMIN_USERNAMES` configuré) :
 
@@ -188,7 +289,7 @@ curl -b /tmp/cj localhost:3457/api/me                              # → {"user"
 
 Nettoyage : `DELETE FROM users WHERE username = 'test-…'` cascade tout (FK `ON DELETE CASCADE`).
 
-## 10. Notes de maintenance
+## 11. Notes de maintenance
 
 - **Ajouter une règle de validation** → uniquement dans `src/lib/authValidate.ts` (source de vérité unique) : routes API et formulaire la récupèrent automatiquement, les messages restent identiques. Étendre `tests/authCore.test.ts` dans le même mouvement.
 - **Révoquer toutes les sessions d'un compte** → `revokeAllUserSessions(userId)` (`session.ts`) : changement de mot de passe, rejet, suspension. La route de rejet l'appelle AVANT le DELETE (défense en profondeur : le CASCADE de `auth_sessions.user_id` ferait déjà le ménage). Toute future route qui bannit sans supprimer ou change un mot de passe DOIT l'appeler.
@@ -206,3 +307,8 @@ export async function POST(req: NextRequest) {
 ```
 
 - Durée de session : `SESSION_DAYS = 30` (`session.ts`). Coûts scrypt : `SCRYPT_N/R/P` — les monter ne casse rien (format versionné), mais les anciens hash ne sont re-hachés qu'à la prochaine connexion réussie.
+- **SSO (OIDC)** — `src/lib/oidc.ts` suit le même principe que `session.ts` : module sans import Next, routes minces. Points d'attention :
+  - le protocole OIDC lui-même est délégué à `openid-client` (v6) — ne pas réimplémenter la validation des jetons à la main ;
+  - toute nouvelle politique d'identité passe par `resolveOidcAccount` (une seule écriture des règles création/rattachement) ;
+  - un compte né en SSO a `password_hash = ''` : la route de login le traite exactement comme un échec de mot de passe (message ET chrono indiscernables) ;
+  - ajouter un code d'erreur ? Il va dans `OIDC_ERROR_CODES` (`oidcMessages.ts`, ensemble fermé) et le callback le journalise — jamais de texte de l'IdP dans l'URL.

@@ -30,8 +30,10 @@ export { SESSION_COOKIE } from "./session";
  *   - `SESSION_SECURE_COOKIE=1` force le cookie secure (HTTPS assumé) ;
  *   - sinon : `x-forwarded-proto` (reverse-proxy TLS) puis le protocole de la
  *     requête. Sans requête disponible, on retombe sur NODE_ENV.
+ *
+ * Exporté : le cookie de binding du flux SSO (oidc) applique la même règle.
  */
-function shouldUseSecureCookie(req?: Request): boolean {
+export function shouldUseSecureCookie(req?: Request): boolean {
   const override = process.env.SESSION_SECURE_COOKIE?.trim();
   if (override === "0") return false;
   if (override === "1") return true;

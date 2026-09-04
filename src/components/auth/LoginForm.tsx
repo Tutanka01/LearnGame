@@ -19,6 +19,7 @@ import {
   Check,
   Eye,
   EyeOff,
+  GraduationCap,
   Hourglass,
   Loader2,
   ShieldCheck,
@@ -29,7 +30,8 @@ import {
   X,
 } from "lucide-react";
 import Segmented from "@/components/ui/Segmented";
-import { PASSWORD_MIN, passwordStrength, validatePassword, validateUsername } from "@/lib/authValidate";
+import { PASSWORD_MIN, isSafeLocalPath, passwordStrength, validatePassword, validateUsername } from "@/lib/authValidate";
+import { oidcErrorMessage } from "@/lib/oidcMessages";
 
 const FEATURES = [
   { icon: Sparkles, text: "Décris un concept, l'IA crée un jeu sur mesure" },
@@ -41,10 +43,9 @@ type Mode = "login" | "register";
 type Availability = "idle" | "checking" | "ok" | "taken";
 type FieldErrors = { username?: string; password?: string; confirm?: string };
 
-/** Destination sûre du ?next= : jamais de redirection vers l'extérieur. */
+/** Destination sûre du ?next= : module partagé avec le serveur (authValidate). */
 function safeNext(): string {
-  const next = new URLSearchParams(window.location.search).get("next");
-  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  return isSafeLocalPath(new URLSearchParams(window.location.search).get("next"));
 }
 
 /** Couleurs de la jauge de robustesse (remplissage + libellé). */
@@ -54,7 +55,7 @@ function strengthStyle(score: number): { bar: string; text: string } {
   return { bar: "bg-[var(--color-accent-2)]", text: "text-[var(--color-accent-2)]" };
 }
 
-export default function LoginForm() {
+export default function LoginForm({ oidc = false }: { oidc?: boolean }) {
   const router = useRouter();
   // ?next= (destination d'origine après une session expirée) — lu côté serveur
   // comme côté client via le router, donc sans flash à l'hydratation.
@@ -68,7 +69,12 @@ export default function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [capsLockField, setCapsLockField] = useState<"password" | "confirm" | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [banner, setBanner] = useState<{ kind: "error" | "info"; text: string } | null>(null);
+  // Bannière initiale : erreur du callback SSO (?error=<code fermé>), les
+  // messages venant de l'université sont mappés côté module partagé.
+  const [banner, setBanner] = useState<{ kind: "error" | "info"; text: string } | null>(() => {
+    const ssoMessage = oidcErrorMessage(searchParams.get("error"));
+    return ssoMessage ? { kind: "error", text: ssoMessage } : null;
+  });
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState(false);
   const [availability, setAvailability] = useState<Availability>("idle");
@@ -548,6 +554,25 @@ export default function LoginForm() {
                     )}
                   </button>
                 </form>
+
+                {oidc && (
+                  <>
+                    <div className="flex items-center gap-3 mt-5" aria-hidden>
+                      <div className="h-px flex-1 bg-[var(--color-border)]" />
+                      <span className="text-xs text-[var(--color-ink-faint)]">ou</span>
+                      <div className="h-px flex-1 bg-[var(--color-border)]" />
+                    </div>
+                    <a
+                      href={`/api/auth/oidc/start${
+                        nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""
+                      }`}
+                      className="btn btn-ghost w-full py-3 mt-4"
+                    >
+                      <GraduationCap size={16} aria-hidden />
+                      Se connecter via le SSO de l&apos;université
+                    </a>
+                  </>
+                )}
 
                 <p className="text-xs text-center text-[var(--color-ink-faint)] mt-5">
                   {mode === "login"

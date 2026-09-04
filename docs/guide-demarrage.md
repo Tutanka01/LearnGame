@@ -65,7 +65,14 @@ Toutes les variables (les variables d'environnement réelles **priment** sur le 
 | `OPENAI_TEMPERATURE`      | Température d'échantillonnage (0.6 par défaut : code plus fiable que 0.7+).                                                           |
 | `SESSION_SECURE_COOKIE`   | Par défaut, le cookie de session est marqué `secure` (HTTPS uniquement) en production. Mettre **`0`** uniquement pour un déploiement en HTTP pur (réseau interne sans TLS). |
 | `TRUST_PROXY`             | Mettre **`1`** derrière un reverse proxy de confiance qui **écrase** `x-forwarded-for` (nginx, traefik…) : les fenêtres anti-abus identifient alors chaque client par sa vraie IP. Sans cette variable, les plafonds par IP deviennent des plafonds globaux (dimensionnés pour une salle de classe) ; la protection par compte (10 tentatives/minute) reste active. |
-| `ADMIN_USERNAMES`         | Noms d'utilisateur (séparés par des virgules) promus `role='admin'`, `status='approved'` à l'inscription **ou au démarrage du serveur**. Sert au bootstrap du premier admin. |
+| `ADMIN_USERNAMES`         | Noms d'utilisateur (séparés par des virgules) promus `role='admin'`, `status='approved'` à l'inscription **ou au démarrage du serveur**. Sert au bootstrap du premier admin. S'applique aussi aux comptes créés via le SSO (nom final, suffixé en cas de collision). |
+| `OIDC_ISSUER`             | Issuer du fournisseur d'identité pour la **connexion SSO** (ex. CAS de l'université : `https://sso.univ-pau.fr/cas/oidc` — sans `/.well-known/openid-configuration`). Avec `OIDC_CLIENT_ID` + `OIDC_CLIENT_SECRET`, active le bouton « Se connecter via le SSO » sur `/login`. Détails et flux : [`docs/authentification.md`](authentification.md) §8. |
+| `OIDC_CLIENT_ID`          | Identifiant du client **confidentiel** déclaré chez l'université (registre CAS : flux authorization code + PKCE). |
+| `OIDC_CLIENT_SECRET`      | Secret de ce client. |
+| `OIDC_REDIRECT_URI`       | URI de rappel `https://…/api/auth/oidc/callback` — **recommandé en production** (doit être identique à celle déclarée auprès de l'université). Sans elle, l'URI est déduite de l'origine servie (`TRUST_PROXY=1` → en-têtes `x-forwarded-*`, sinon en-tête `Host`). |
+| `OIDC_SCOPES`             | Scopes demandés (défaut : `openid profile email`). Doit contenir `openid`. |
+| `OIDC_ALLOWED_DOMAINS`    | Suffixes de domaine e-mail autorisés, séparés par des virgules (sous-domaines inclus, ex. `univ-pau.fr`). Vide = toutes les identités délivrées par l'IdP. |
+| `OIDC_TOKEN_AUTH`         | Authentification au token endpoint : `post` (défaut) ou `basic`. |
 
 > NB : `SESSION_SECRET` (présent dans d'anciennes versions) est **obsolète** — les sessions
 > sont désormais des tokens aléatoires stockés en base sous forme de SHA-256, il n'y a plus
@@ -190,6 +197,10 @@ interne sans TLS) : en HTTPS, remettez la valeur par défaut.
 | `npm run lint` se bloque                                            | Comportement attendu : il ouvre un prompt interactif (pas d'ESLint configuré). Utilisez `npm run build` comme check.                                                                                                                       |
 | Les tests qui touchent la base refusent de démarrer                  | Message « Refus : une base existe déjà ici » : ils protègent vos données. Lancez-les depuis un dossier temporaire vide comme indiqué en section 5.                                                                                          |
 | Inscription bloquée « en attente d'approbation »                     | Comportement normal : un admin doit valider via `/admin`. Pour le premier admin, suivre le workflow `ADMIN_USERNAMES` (section 3).                                                                                                          |
+| Le bouton SSO n'apparaît pas                                          | `OIDC_ISSUER`, `OIDC_CLIENT_ID` et `OIDC_CLIENT_SECRET` doivent être **tous trois** renseignés (vérifier que le process les voit : ils priment sur `.env`). Journal de démarrage : un avertissement signale l'absence d'`OIDC_REDIRECT_URI`. |
+| « Le SSO de l'université a refusé la connexion » (`oidc_refus_idp`)   | L'IdP a renvoyé une erreur (identification refusée, client mal déclaré…) : les détails sont dans les journaux du serveur. Vérifier côté université la déclaration du client (redirect_uri **identique** à `OIDC_REDIRECT_URI`, PKCE activé).  |
+| « Session de connexion expirée ou déjà utilisée » (`oidc_etat_invalide`) | Le flux SSO dure 10 minutes au maximum et un callback ne se rejoue pas. Reprendre depuis le bouton SSO. Un blocage systématique côté navigateur pointe vers un proxy qui retire les cookies.                                                |
+| SSO : chaque connexion crée un doublon de compte                      | Le rattachement par e-mail exige que l'IdP délivre l'e-mail du compte (claim `email`) et que celui-ci corresponde au compte local (casse ignorée). Vérifier les scopes (`email`) et l'e-mail du compte local.                               |
 
 ---
 

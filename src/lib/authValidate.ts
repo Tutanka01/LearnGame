@@ -37,6 +37,29 @@ export function validatePassword(password: string): string | null {
   return null;
 }
 
+/**
+ * Destination « ?next= » sûre : chemin local strictement relatif, sinon "/".
+ * Refuse tout ce qui pourrait quitter l'application : URLs absolues,
+ * protocol-relative (« //hôte »), backslash-hôte, caractères de contrôle, et
+ * chemins d'API (boucle de redirection auto-entretenue via /api/auth/oidc/*).
+ * Partagé client (formulaire) et serveur (flux SSO) : une seule implémentation.
+ */
+export function isSafeLocalPath(raw: string | null | undefined): string {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return "/";
+  if (/[\u0000-\u001f\u007f]/.test(raw)) return "/";
+  // Pas de destination vers nos propres routes d'API : ?next=/api/auth/oidc/start
+  // créerait une boucle de redirections auto-entretenue après chaque login.
+  if (raw.startsWith("/api/")) return "/";
+  // Barrière supplémentaire : doit rester un chemin relatif vers la même origine.
+  try {
+    const u = new URL(raw, "https://app.invalid");
+    if (u.origin !== "https://app.invalid") return "/";
+  } catch {
+    return "/";
+  }
+  return raw;
+}
+
 // --- Force du mot de passe (retour honnête, sans bluff) ---------------------
 
 export interface PasswordStrength {

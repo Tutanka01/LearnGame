@@ -205,9 +205,62 @@ function createDb(): DatabaseSync {
     db.exec("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'approved';");
   }
 
+  // Connexion SSO (OIDC) : identité fédérée (émetteur + sujet) rattachée au
+  // compte, et e-mail (utilisé pour rattacher un compte local existant).
+  // `password_hash` reste NOT NULL : les comptes nés en SSO y stockent '' —
+  // aucun mot de passe local n'existe pour eux.
+  if (!userCols.includes("email")) {
+    db.exec("ALTER TABLE users ADD COLUMN email TEXT;");
+  }
+  if (!userCols.includes("oidc_issuer")) {
+    db.exec("ALTER TABLE users ADD COLUMN oidc_issuer TEXT;");
+  }
+  if (!userCols.includes("oidc_sub")) {
+    db.exec("ALTER TABLE users ADD COLUMN oidc_sub TEXT;");
+  }
+  // Un compte ne peut porter qu'UNE identité fédérée, et une identité ne peut
+  // être portée que par UN compte (index partiel : les comptes locaux ne
+  // comptent pas, leurs colonnes restent NULL).
+  db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oidc ON users(oidc_issuer, oidc_sub) WHERE oidc_sub IS NOT NULL;"
+  );
+  db.exec("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);");
+  // Le rattachement SSO compare les e-mails en casse-insensible (lower()) :
+  // index fonctionnel pour rester efficace si la table grossit.
+  db.exec("CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users(lower(email));");
+
+  // Flux d'authentification OIDC en cours (state/nonce/verifier PKCE) : la
+  // trace serveur qui rend le `state` single-use et surviv à un redémarrage.
+  // Le `state` brut ne vit que dans l'URL, la table ne stocke que son SHA-256.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS oidc_flows (
+      id TEXT PRIMARY KEY,
+      code_verifier TEXT NOT NULL,
+      nonce TEXT NOT NULL,
+      redirect_uri TEXT NOT NULL,
+      next_path TEXT NOT NULL DEFAULT '/',
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_oidc_flows_expires ON oidc_flows(expires_at);
+  `);
+
   promoteAdmins(db);
 
   return db;
+}
+
+/**
+ * Le nom fait-il partie des comptes promus admin (ADMIN_USERNAMES) ?
+ * Même règle que promoteAdmins() et la route d'inscription — partagée ici
+ * pour que la création de compte SSO applique exactement la même politique.
+ */
+export function isAdminUsername(name: string): boolean {
+  const list = (process.env.ADMIN_USERNAMES ?? "")
+    .split(",")
+    .map((u) => u.trim().toLowerCase())
+    .filter(Boolean);
+  return list.includes(name.trim().toLowerCase());
 }
 
 // Ouverture paresseuse : la connexion n'est créée qu'à la première requête,

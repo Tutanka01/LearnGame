@@ -15,7 +15,8 @@ mécaniquement), améliorable par chat dans un Studio façon Lovable.
 
 - **Stack** : Next.js 15 (App Router) · React 19 · Tailwind CSS v4 · `node:sqlite`
   natif (aucune dépendance native à compiler) · auth 100 % maison (scrypt + sessions
-  en base, zéro lib d'authentification).
+  en base) ; le SSO OIDC est le seul recours à une lib d'authentification
+  (`openid-client`, choisi sciemment pour la validation cryptographique des jetons).
 - **Déploiement** : Docker standalone, **UN SEUL process Node** — c'est une hypothèse
   structurante (rate limiter en mémoire, runner de jobs in-process, sessions en base).
 - **Langue** : tout en français — interface, prompts, messages d'erreur, commentaires
@@ -57,9 +58,10 @@ interactif (ne pas l'utiliser). `npm run build` fait office de vérification de 
 
 | Test | Commande exacte |
 |---|---|
-| `validate`, `genEvents`, `artDirection`, `smoketest`, `lint` | `npx -y tsx tests/<f>.test.ts` (depuis la racine) |
+| `validate`, `genEvents`, `artDirection`, `smoketest`, `lint`, `oidcCore` | `npx -y tsx tests/<f>.test.ts` (depuis la racine) |
 | `db`, `jobs.test.mts`, `authCore` | `cd "$(mktemp -d)" && npx -y tsx <chemin-absolu>/tests/<f>` — ils créent une base fraîche et **refusent** de tourner là où une base existe |
 | `authApproval` | 2 phases dans le **même** dossier temporaire (simule un redémarrage) — voir l'en-tête du fichier |
+| Smoke SSO de bout en bout | IdP mocké : `tests/mock-idp.mjs` (HTTPS local, recette dans son en-tête) — l'app doit tourner depuis un répertoire séparé pour ne pas toucher la vraie base |
 | Smoke HTTP de bout en bout | `PORT=3457 npm start` puis `curl` — ne jamais toucher au port du serveur de dev |
 
 **Nettoyage obligatoire** après tout test ayant créé des données : `DELETE FROM
@@ -102,6 +104,8 @@ node --input-type=module -e "import('./src/lib/db.ts').then(m => { /* m.default 
 | `src/lib/session.ts` | Noyau auth PUR : scrypt versionné, sessions en base. Testable sans Next |
 | `src/lib/auth.ts` | Glue cookies Next (`getCurrentUser`, `setSessionCookie`, `clearSessionCookie`) |
 | `src/lib/authValidate.ts` | Règles identifiants partagées client/serveur — source de vérité unique |
+| `src/lib/oidc.ts` | Noyau SSO OIDC (PKCE, flux persistés single-use, résolution de compte). Le protocole est délégué à `openid-client` v6 |
+| `src/lib/oidcMessages.ts` | Codes d'erreur SSO fermés + messages — partagés callback ↔ formulaire |
 | `src/lib/api.ts` | Gardes des routes (`requireUser`, `requireAdmin`, `assertSameOrigin`), `handleApi`, format d'erreur `{ error }` |
 | `src/lib/errors.ts` | `ApiError` (pur) — défini ici, ré-exporté par `api.ts` |
 | `src/lib/db.ts` | SQLite (WAL, proxy paresseux sur `globalThis`), schéma + migrations, `withTransaction` |
@@ -156,6 +160,13 @@ La carte complète et commentée : `docs/architecture.md`.
 - [ ] Les réponses de « check » (disponibilité de pseudo…) restent **neutres** en cas
       d'erreur serveur — jamais de conclusion inférée d'un 429/500
 - [ ] `tests/authCore.test.ts` étendu dans le même commit
+- [ ] SSO : toute évolution du flux touche `src/lib/oidc.ts` + les 2 routes
+      `/api/auth/oidc/*` + `tests/oidcCore.test.ts` dans le même commit ; les
+      erreurs passent par les codes FERMÉS d'`oidcMessages.ts` (jamais de
+      texte de l'IdP dans l'URL)
+- [ ] SSO : ne JAMAIS construire d'URL depuis `req.url` (`next start` le
+      réécrit en `http://localhost:<port>` quel que soit l'hôte servi) —
+      passer par `redirectOrigin(req)`
 - [ ] Modifier les coûts scrypt = bump du format versionné + `needsRehash` gère la
       migration — ne jamais invalider les hash existants
 
@@ -198,6 +209,10 @@ La carte complète et commentée : `docs/architecture.md`.
 - **La documentation ment vite** : si le code et la doc divergent, corriger la doc
   immédiatement (le cas `SESSION_SECRET` déclaré obligatoire alors qu'abandonné a
   dérouté un relecteur — c'est corrigé, garder le réflexe).
+- **`req.url` ment sous `next start`** : réécrit en `http://localhost:<port>` quel
+  que soit l'hôte servi — construire une redirection avec = renvoyer les navigateurs
+  vers localhost. Passer par `redirectOrigin(req)` (OIDC_REDIRECT_URI →
+  `TRUST_PROXY` → en-tête `Host`).
 
 ## 9. Travailler avec des sous-agents — intelligemment
 

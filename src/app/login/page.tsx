@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
+import { isOidcEnabled } from "@/lib/oidc";
 import LoginForm from "@/components/auth/LoginForm";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export default async function LoginPage() {
   // Suspense : requis autour de LoginForm, qui lit les search params (?next=).
   return (
     <Suspense fallback={null}>
-      <LoginForm />
+      <LoginForm oidc={isOidcEnabled()} />
     </Suspense>
   );
 }

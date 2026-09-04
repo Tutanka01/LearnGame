@@ -44,6 +44,13 @@ export async function POST(req: NextRequest) {
       burnScryptTime();
       return apiError(401, "Nom d'utilisateur ou mot de passe incorrect.");
     }
+    // Compte né en SSO : aucun mot de passe local (hash vide). On paie quand
+    // même le coût scrypt — une connexion locale ne doit pas être
+    // discernable d'un mauvais mot de passe, ni au message ni au chrono.
+    if (user.password_hash === "") {
+      burnScryptTime();
+      return apiError(401, "Nom d'utilisateur ou mot de passe incorrect.");
+    }
     if (!verifyPassword(password, user.password_hash)) {
       return apiError(401, "Nom d'utilisateur ou mot de passe incorrect.");
     }
