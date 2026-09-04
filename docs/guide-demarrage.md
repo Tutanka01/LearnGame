@@ -165,6 +165,13 @@ cp .env.example .env   # renseignez OPENAI_*, ADMIN_USERNAMES, puis APP_DOMAIN e
 docker compose up -d --build
 ```
 
+> 🌐 **Serveur derrière un mandataire HTTP** (réseau universitaire qui impose un proxy pour
+> toute sortie Internet) : définissez `HTTP_PROXY`, `HTTPS_PROXY` et `NO_PROXY` dans le shell
+> avant `docker compose up -d --build` — le compose les transmet au build (`npm ci` les lit
+> nativement) et le dépannage §8 détaille le cas DNS. Si le proxy intercepte le TLS avec sa
+> propre autorité de certification, ajoutez `NODE_EXTRA_CA_CERTS=/chemin/vers/ca.pem` à
+> l'environnement du build.
+
 Comment ça fonctionne :
 
 - **`next.config.ts` active `output: "standalone"`** : le build produit `.next/standalone`, un
@@ -316,6 +323,8 @@ entièrement de ce proxy.
 | Je me connecte, mais la session « ne tient pas » (redirigé vers `/login` en boucle) | En production, le cookie est marqué `secure` et est **silencieusement jeté par le navigateur** si l'app est servie en HTTP. Si votre déploiement est volontairement en HTTP pur, mettre `SESSION_SECURE_COOKIE=0` dans `.env` puis redémarrer. |
 | Le serveur « marche » mais sans distinguer les clients (rate limits globaux) | Aucun proxy de confiance déclaré : `x-forwarded-for` est forgable, donc ignoré. Derrière un reverse proxy qui écrase cet en-tête, mettre `TRUST_PROXY=1` dans `.env` puis redémarrer. La protection par compte (10 tentatives/minute) reste active dans tous les cas.                            |
 | Erreur de compilation d'un module natif SQLite (better-sqlite3)     | Le projet n'utilise **pas** better-sqlite3 mais `node:sqlite` natif (better-sqlite3 ne compile pas sur Node 26). Vérifiez que vous n'avez pas ajouté de dépendance native et que votre Node est ≥ 22.5 (recommandé ≥ 24).                   |
+| `docker compose up -d --build` échoue sur `RUN npm ci` (« npm error network ») | Les conteneurs ne joignent pas `registry.npmjs.org` alors que le host y arrive. Diagnostic : `docker run --rm node:24-alpine npm ping`. **Cause fréquente** (Debian + `systemd-resolved`) : le DNS du host est un relais local (`127.0.0.53` dans `/etc/resolv.conf`, injoignable depuis un conteneur) et le DNS externe de repli de Docker est bloqué par le réseau → fixer les vrais DNS dans `/etc/docker/daemon.json` (`{ "dns": ["<DNS-univ>", "1.1.1.1"] }` puis `systemctl restart docker`). **Ou** le réseau impose un mandataire HTTP : `HTTPS_PROXY=http://… docker compose up -d --build` (le compose transmet ces variables au build, cf. section 6). |
+| Le build passe mais la génération échoue (délai dépassé vers le LLM) derrière un mandataire | Au runtime, Node ne lit `HTTPS_PROXY` que si `NODE_USE_ENV_PROXY=1` (Node ≥ 24). Ajouter les deux dans `.env` (transmis au conteneur par `env_file`) : `NODE_USE_ENV_PROXY=1` + `HTTPS_PROXY=http://…`, puis `docker compose restart`. |
 | `EADDRINUSE` / port 3000 déjà pris                                 | Un autre process occupe le port (souvent un `npm run dev` ou `npm start` oublié). Tuez-le (`kill <pid>` après `lsof -i :3000`) ou changez de port : `PORT=3457 npm start` (dev : `PORT=3457 npm run dev`).                                 |
 | `npm run lint` se bloque                                            | Comportement attendu : il ouvre un prompt interactif (pas d'ESLint configuré). Utilisez `npm run build` comme check.                                                                                                                       |
 | Les tests qui touchent la base refusent de démarrer                  | Message « Refus : une base existe déjà ici » : ils protègent vos données. Lancez-les depuis un dossier temporaire vide comme indiqué en section 5.                                                                                          |

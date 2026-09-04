@@ -13,7 +13,16 @@
 
 services:
   learngame:
-    build: .
+    build:
+      context: .
+      args:
+        # Réseau derrière un mandataire HTTP (serveur universitaire) : ces
+        # variables (définies dans le shell qui lance `docker compose`) sont
+        # transmises au `RUN npm ci` du Dockerfile, qui les lit nativement.
+        # Laisser vides dans le cas courant (accès direct à Internet).
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1}
     environment:
       # Proxy intégré = Caddy écrase x-forwarded-for : les fenêtres anti-abus
       # identifient chaque client par sa vraie IP. Défaut 1, surchargeable
