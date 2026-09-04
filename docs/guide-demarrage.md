@@ -184,8 +184,9 @@ Comment ça fonctionne :
 ### Proxy et HTTPS
 
 Le compose embarque un **service `proxy` (Caddy v2)** qui termine le TLS et expose
-l'application sur les ports 80/443 : modes `HTTPS_MODE`, domaine `APP_DOMAIN`, certificat
-interne ou Let's Encrypt, variante « reverse proxy de l'université » — tout est décrit
+l'application sur les ports 80/443 : modes `HTTPS_MODE` (`off`, `self`, `certs` avec vos
+certificats), domaine `APP_DOMAIN`, variante « reverse proxy de l'université » — tout est
+décrit
 dans la section 7.
 
 Rappel : le cookie de session est marqué `secure` automatiquement quand l'application est
@@ -207,11 +208,10 @@ Le `docker-compose.yml` définit **deux services** :
 
 | Variable            | Défaut      | Rôle                                                                                                                                                                                                                       |
 | ------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `APP_DOMAIN`        | `localhost` | Domaine public de l'application, **sans protocole** (ex. `learngame.mon-univ.fr`). Une seule source de vérité : utilisée comme adresse du site par le proxy **et** par l'application pour dériver l'URI de rappel SSO par défaut. |
-| `HTTPS_MODE`        | `off`       | Choix du TLS : `off` (HTTP pur), `self` (certificat interne de Caddy) ou `letsencrypt` (certificat public). Les trois modes sont détaillés ci-dessous.                                                                       |
-| `ACME_EMAIL`        | —           | E-mail pour les avis d'expiration Let's Encrypt (mode `letsencrypt` uniquement).                                                                                                                                            |
-| `OIDC_REDIRECT_URI` | —           | Override explicite de l'URI de rappel SSO. S'il n'est pas fixé, l'application dérive automatiquement `https://$APP_DOMAIN/api/auth/oidc/callback` dès que `APP_DOMAIN` est renseigné **et** `HTTPS_MODE` vaut `self` ou `letsencrypt`. En mode `off`, pas de dérivation automatique (l'URI resterait en http) : fixer `OIDC_REDIRECT_URI` explicitement si le SSO doit fonctionner en HTTP pur. |
-| `TRUST_PROXY`       | —           | **Forcé à `1` par le compose** pour le service `learngame` (le proxy intégré écrase les en-têtes) : ne pas le retirer tant que l'application passe par le proxy.                                                            |
+| `APP_DOMAIN`        | `localhost` | Domaine public de l'application, **sans protocole ni port** (ex. `learngame.mon-univ.fr`). Une seule source de vérité : utilisée comme adresse du site par le proxy **et** par l'application pour les redirections internes et l'URI de rappel SSO par défaut. |
+| `HTTPS_MODE`        | `off`       | Choix du TLS : `off` (HTTP pur), `self` (certificat interne de Caddy, tests en LAN) ou `certs` (**vos certificats**, fournis par l'université). Les trois modes sont détaillés ci-dessous.                                   |
+| `OIDC_REDIRECT_URI` | —           | Override explicite de l'URI de rappel SSO. S'il n'est pas fixé, l'application dérive automatiquement `https://$APP_DOMAIN/api/auth/oidc/callback` dès que `APP_DOMAIN` est renseigné **et** `HTTPS_MODE` vaut `self` ou `certs`. En mode `off`, pas de dérivation automatique (l'URI resterait en http) : fixer `OIDC_REDIRECT_URI` explicitement si le SSO doit fonctionner en HTTP pur. |
+| `TRUST_PROXY`       | —           | **Vaut `1` par défaut** (le compose l'injecte : le proxy intégré écrase les en-têtes `x-forwarded-*`). Mettre `TRUST_PROXY=0` dans `.env` uniquement dans la variante « proxy universitaire » qui n'écraserait pas ces en-têtes. |
 
 ### Les trois modes `HTTPS_MODE`
 
@@ -220,26 +220,56 @@ Le `docker-compose.yml` définit **deux services** :
   aucun. Côté navigateur : aucun avertissement, mais le trafic circule en clair — l'app
   lit `x-forwarded-proto` et marque donc le cookie de session **non** `secure`.
 - **`self` — certificat de l'autorité interne de Caddy (`tls internal`).** Caddy crée sa
-  propre autorité de certification et émet un certificat pour `APP_DOMAIN` : pour un LAN
-  où le domaine n'est pas publiquement résoluble. Prérequis : aucun (tout est local).
-  Côté navigateur : **avertissement de certificat** tant que le certificat racine interne
-  n'a pas été importé sur les postes (procédure ci-dessous) ; sans import, il faut
-  accepter l'avertissement à chaque visite.
-- **`letsencrypt` — certificat public Let's Encrypt.** Émission **et** renouvellement
-  automatiques, redirection HTTP→HTTPS et en-tête **HSTS** activés. Prérequis :
-  `APP_DOMAIN` doit pointer en DNS vers ce serveur **et** les ports 80 et 443 être
-  joignables depuis Internet. Côté navigateur : cadenas valide, aucune manipulation ;
-  `ACME_EMAIL` (optionnel) reçoit les avis d'expiration.
+  propre autorité de certification et émet un certificat pour `APP_DOMAIN` : pour tester
+  en HTTPS dans un LAN où le domaine n'est pas publiquement résoluble. Prérequis :
+  aucun (tout est local). Côté navigateur : **avertissement de certificat** tant que le
+  certificat racine interne n'a pas été importé sur les postes (procédure ci-dessous) ;
+  sans import, il faut accepter l'avertissement à chaque visite. Pas de HSTS dans ce
+  mode (volontaire : un HSTS d'un an bloquerait un retour en `off`).
+- **`certs` — vos propres certificats (mode de production).** Vous déposez les
+  certificats **délivrés par le service informatique / l'AC de l'université** dans le
+  dossier `./certs/` (voir ci-dessous) : Caddy les sert tels quels, redirection
+  HTTP→HTTPS et en-tête **HSTS** activés. Prérequis : `APP_DOMAIN` doit correspondre
+  au nom dans le certificat. Côté navigateur : cadenas valide (le poste fait
+  confiance à l'AC émettrice), aucune manipulation.
+- **`certs` — vos propres certificats (mode de production).** Vous déposez les
+  certificats **délivrés par le service informatique / l'AC de l'université** dans le
+  dossier `./certs/` (voir ci-dessous) : Caddy les sert tels quels, redirection
+  HTTP→HTTPS et en-tête **HSTS** activés. Prérequis : `APP_DOMAIN` doit correspondre
+  au nom dans le certificat. Côté navigateur : cadenas valide (le poste fait
+  confiance à l'AC émettrice), aucune manipulation.
 
 ### Mise en route
 
 ```bash
 cp .env.example .env            # renseigner au minimum APP_DOMAIN et HTTPS_MODE
 docker compose up -d --build
-docker compose logs -f proxy    # suivre l'émission du certificat / le démarrage du proxy
+docker compose logs -f proxy    # suivre le démarrage du proxy
 docker compose restart          # après une modification du .env
 docker compose down             # tout arrêter
 ```
+
+### Mode `certs` : déposer vos certificats
+
+Créez le dossier `certs/` à la racine du projet (il est **ignoré par git** — les clés
+privées n'y seront jamais commitées) et déposez-y deux fichiers, avec exactement ces
+noms :
+
+| Fichier                     | Contenu                                                                       |
+| --------------------------- | ----------------------------------------------------------------------------- |
+| `certs/fullchain.pem`       | Le certificat du domaine **plus la chaîne complète** (intermédiaires inclus)  |
+| `certs/privkey.pem`         | La clé privée correspondante (format PEM, `BEGIN PRIVATE KEY` ou `BEGIN RSA PRIVATE KEY`) |
+
+Puis :
+
+```bash
+HTTPS_MODE=certs dans .env, APP_DOMAIN = le nom dans le certificat
+docker compose up -d --build
+```
+
+Le proxy refuse de démarrer si les fichiers manquent (message explicite) plutôt que de
+servir du HTTP en silence. Après chaque **renouvellement** par l'université : remplacez
+les fichiers puis `docker compose restart proxy`.
 
 ### Mode `self` : faire confiance au certificat racine interne
 
@@ -272,8 +302,8 @@ entièrement de ce proxy.
 
 - **L'application n'est jamais exposée publiquement** : seule la porte 80/443 du proxy
   l'est ; `learngame` reste liée à `127.0.0.1`.
-- HSTS uniquement en mode `letsencrypt`.
-- **SSO** : avec HTTPS activé (`self` ou `letsencrypt`), l'URI de rappel à déclarer auprès
+- HSTS uniquement en mode `certs`.
+- **SSO** : avec HTTPS activé (`self` ou `certs`), l'URI de rappel à déclarer auprès
   de l'université est `https://$APP_DOMAIN/api/auth/oidc/callback` — ou la valeur
   explicite d'`OIDC_REDIRECT_URI` si vous l'avez fixée.
 
@@ -294,6 +324,8 @@ entièrement de ce proxy.
 | « Le SSO de l'université a refusé la connexion » (`oidc_refus_idp`)   | L'IdP a renvoyé une erreur (identification refusée, client mal déclaré…) : les détails sont dans les journaux du serveur. Vérifier côté université la déclaration du client (redirect_uri **identique** à `OIDC_REDIRECT_URI`, PKCE activé).  |
 | « Session de connexion expirée ou déjà utilisée » (`oidc_etat_invalide`) | Le flux SSO dure 10 minutes au maximum et un callback ne se rejoue pas. Reprendre depuis le bouton SSO. Un blocage systématique côté navigateur pointe vers un proxy qui retire les cookies.                                                |
 | SSO : chaque connexion crée un doublon de compte                      | Le rattachement par e-mail exige que l'IdP délivre l'e-mail du compte (claim `email`) et que celui-ci corresponde au compte local (casse ignorée). Vérifier les scopes (`email`) et l'e-mail du compte local.                               |
+| Le proxy refuse de démarrer (`HTTPS_MODE=certs`)                      | Les fichiers `certs/fullchain.pem` et `certs/privkey.pem` sont absents ou mal nommés — voir `certs/README.md`. Le refus au démarrage est volontaire : un proxy sans certificat ne doit pas servir du HTTP en silence.                        |
+| Certificat expiré / renouvelé par l'université                        | Remplacer `certs/fullchain.pem` et `certs/privkey.pem` par les nouveaux fichiers puis `docker compose restart proxy`. Aucun rebuild nécessaire.                                                                                             |
 | Let's Encrypt n'émet pas de certificat                               | Le DNS de `APP_DOMAIN` ne pointe pas vers ce serveur, ou les ports 80/443 sont bloqués : vérifier `docker compose logs proxy`. En attendant, `HTTPS_MODE=self` donne un TLS utilisable.                                                      |
 | Avertissement navigateur en mode `self`                              | Comportement attendu : le certificat est émis par l'autorité interne de Caddy. Importer le certificat racine (section 7) ou accepter l'avertissement.                                                                                      |
 

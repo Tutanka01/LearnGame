@@ -6,7 +6,8 @@ build/
 .env
 .env.local
 data/
-certs/
+/certs/*
+!/certs/README.md
 .DS_Store
 next-env.d.ts
 *.tsbuildinfo

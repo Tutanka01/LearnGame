@@ -284,7 +284,7 @@ corriges ses findings, tu **revalides** (build + tests).
 | Port 3000 occupé | `lsof -i :3000` puis kill, ou `PORT=<n>` — en évitant 3457, réservé au smoke test |
 | Type errors en cascade sur `SessionUser`/`User` | `requireUser()` retourne le type sanitisé — ne jamais re-ajouter `password_hash` aux types exposés |
 
-Le guide complet : `docs/guide-demarrage.md` §7.
+Le guide complet : `docs/guide-demarrage.md` §8.
 
 ## 11. Rituel de fin de tâche
 

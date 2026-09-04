@@ -1,13 +1,17 @@
 // IdP OIDC mocké pour le smoke test du SSO — HTTPS local auto-signé.
-// Usage (certificat auto-signé à générer d'abord, puis l'app doit lui faire
-// confiance via NODE_EXTRA_CA_CERTS) :
+// L'issuer annoncé est https://host.docker.internal:<port> : l'app conteneurisée
+// (via Docker Desktop) atteint l'IdP qui tourne SUR L'HÔTE, et l'hôte atteint
+// l'IdP avec curl --resolve host.docker.internal:<port>:127.0.0.1.
+//
+// Usage :
 //   openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 1 \
-//     -nodes -subj "/CN=127.0.0.1" -addext "subjectAltName=IP:127.0.0.1"
-//   node tests/mock-idp.mjs 8443 key.pem cert.pem
-//   PORT=3457 OIDC_ISSUER=https://127.0.0.1:8443 OIDC_CLIENT_ID=learngame-test \
-//     OIDC_CLIENT_SECRET=secret-test \
-//     OIDC_REDIRECT_URI=http://127.0.0.1:3457/api/auth/oidc/callback \
-//     NODE_EXTRA_CA_CERTS=cert.pem npm start
+//     -nodes -subj "/CN=host.docker.internal" \
+//     -addext "subjectAltName=DNS:host.docker.internal,IP:127.0.0.1"
+//   node tests/mock-idp.mjs 8443 key.pem cert.pem 0.0.0.0
+//   docker compose up -d --build   avec dans .env :
+//     OIDC_ISSUER=https://host.docker.internal:8443
+//     OIDC_CLIENT_ID=learngame-test  OIDC_CLIENT_SECRET=secret-test
+//     NODE_EXTRA_CA_CERTS=<cert.pem monté dans le conteneur>
 // Puis : GET /api/auth/oidc/start → suivre la redirection (l'IdP renvoie un
 // code immédiatement) → le callback crée la session. L'identité délivrée est
 // test-sso-marie / marie.dupont@univ-pau.fr (nettoyer avec les outils habituels).
@@ -19,10 +23,10 @@ import fs from "node:fs";
 import { createHash, generateKeyPairSync, createSign, randomBytes } from "node:crypto";
 
 const port = Number(process.argv[2] ?? 8443);
-const ISSUER = `https://127.0.0.1:${port}`;
+const bindAddress = process.argv[5] ?? "127.0.0.1";
+const ISSUER = `https://host.docker.internal:${port}`; // issuer vu depuis le conteneur de l'app
 const CLIENT_ID = "learngame-test";
 const CLIENT_SECRET = "secret-test";
-const REDIRECT_URI = "http://127.0.0.1:3457/api/auth/oidc/callback";
 const SUB = "test-sub-42";
 const USERNAME = "test-sso-marie";
 const EMAIL = "marie.dupont@univ-pau.fr";
@@ -134,4 +138,6 @@ const server = https.createServer(
   }
 );
 
-server.listen(port, "127.0.0.1", () => console.log(`IdP mocké en écoute sur ${ISSUER}`));
+server.listen(port, bindAddress, () =>
+  console.log(`IdP mocké en écoute sur https://${bindAddress}:${port} (issuer annoncé : ${ISSUER})`)
+);
