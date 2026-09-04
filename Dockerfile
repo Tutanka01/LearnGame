@@ -12,6 +12,13 @@ RUN npm run build
 FROM node:24-alpine
 WORKDIR /app
 ENV NODE_ENV=production
+# Next standalone lit HOSTNAME — que Docker injecte (= id du conteneur) : le
+# serveur se lierait alors à l'interface du conteneur uniquement, et le
+# healthcheck interne (127.0.0.1) échouerait → conteneur « unhealthy » alors
+# même que les logs ont l'air sains. 0.0.0.0 = écoute sur toutes les
+# interfaces (la seule porte publique reste le proxy).
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
 
 # Serveur autonome Next.js (inclut les node_modules nécessaires)
 COPY --from=builder /app/.next/standalone ./
