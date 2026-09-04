@@ -161,7 +161,7 @@ un port local puis démarrez avec `OPENAI_BASE_URL=http://localhost:<port>/v1`.
 ## 6. Déploiement (Docker)
 
 ```bash
-cp .env.example .env   # puis renseignez OPENAI_*, ADMIN_USERNAMES (+ TRUST_PROXY si reverse proxy)
+cp .env.example .env   # renseignez OPENAI_*, ADMIN_USERNAMES, puis APP_DOMAIN et HTTPS_MODE (section 7)
 docker compose up -d --build
 ```
 
@@ -172,21 +172,114 @@ Comment ça fonctionne :
   `.next/static`) et démarre `node server.js` — image finale légère, sans recopier tout
   `node_modules`. Le runner de jobs est **in-process** : cette hypothèse d'un seul process Node
   est assurée par ce build standalone.
-- **`docker-compose.yml`** monte **`./data:/app/data`** en volume : la base SQLite et les données
-  survivent aux recréations du conteneur. Le conteneur tourne avec l'utilisateur `node` (non root),
+- **`docker-compose.yml`** définit **deux services** : `learngame` (l'application) et
+  `proxy` (Caddy v2, terminaison TLS — section 7). Le service `learngame` monte
+  **`./data:/app/data`** en volume : la base SQLite et les données survivent aux
+  recréations du conteneur. Le conteneur tourne avec l'utilisateur `node` (non root),
   le `env_file: .env` transmet la configuration, et `restart: unless-stopped` relance le service.
-- Le port exposé est **3000** (`ports: "3000:3000"`).
+- Le service `learngame` écoute sur **`127.0.0.1:3000`** : accessible uniquement en local
+  (debug). Il n'est **pas** exposé publiquement — l'accès public passe par le service
+  `proxy`, seul à ouvrir les ports 80/443 (section 7).
 
-### Reverse proxy et HTTPS
+### Proxy et HTTPS
 
-En production, mettez l'application derrière un **reverse proxy avec TLS** (Caddy, Nginx +
-certbot…). Le cookie de session est alors marqué `secure` automatiquement. **Ne laissez
-`SESSION_SECURE_COOKIE=0` que si l'application est réellement servie en HTTP pur** (réseau
-interne sans TLS) : en HTTPS, remettez la valeur par défaut.
+Le compose embarque un **service `proxy` (Caddy v2)** qui termine le TLS et expose
+l'application sur les ports 80/443 : modes `HTTPS_MODE`, domaine `APP_DOMAIN`, certificat
+interne ou Let's Encrypt, variante « reverse proxy de l'université » — tout est décrit
+dans la section 7.
+
+Rappel : le cookie de session est marqué `secure` automatiquement quand l'application est
+servie en HTTPS. **Ne laissez `SESSION_SECURE_COOKIE=0` que si l'application est réellement
+servie en HTTP pur** (réseau interne sans TLS) : en HTTPS, remettez la valeur par défaut.
 
 ---
 
-## 7. Dépannage courant
+## 7. HTTPS et domaine avec Docker
+
+Le `docker-compose.yml` définit **deux services** :
+
+| Service     | Rôle                                                                                                                                                  |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `learngame` | L'application (Next standalone). **Non exposée publiquement** : liée à `127.0.0.1:3000`, accessible seulement en local pour le debug.                  |
+| `proxy`     | **Caddy v2**, seul point d'entrée public : écoute 80 (HTTP) et 443 (TCP + UDP pour HTTP/3), termine le TLS et redirige vers l'application. Certificats persistés dans les volumes nommés `caddy_data` et `caddy_config`. |
+
+### Variables de déploiement (`.env`)
+
+| Variable            | Défaut      | Rôle                                                                                                                                                                                                                       |
+| ------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_DOMAIN`        | `localhost` | Domaine public de l'application, **sans protocole** (ex. `learngame.mon-univ.fr`). Une seule source de vérité : utilisée comme adresse du site par le proxy **et** par l'application pour dériver l'URI de rappel SSO par défaut. |
+| `HTTPS_MODE`        | `off`       | Choix du TLS : `off` (HTTP pur), `self` (certificat interne de Caddy) ou `letsencrypt` (certificat public). Les trois modes sont détaillés ci-dessous.                                                                       |
+| `ACME_EMAIL`        | —           | E-mail pour les avis d'expiration Let's Encrypt (mode `letsencrypt` uniquement).                                                                                                                                            |
+| `OIDC_REDIRECT_URI` | —           | Override explicite de l'URI de rappel SSO. S'il n'est pas fixé, l'application dérive automatiquement `https://$APP_DOMAIN/api/auth/oidc/callback` dès que `APP_DOMAIN` est renseigné **et** `HTTPS_MODE` vaut `self` ou `letsencrypt`. En mode `off`, pas de dérivation automatique (l'URI resterait en http) : fixer `OIDC_REDIRECT_URI` explicitement si le SSO doit fonctionner en HTTP pur. |
+| `TRUST_PROXY`       | —           | **Forcé à `1` par le compose** pour le service `learngame` (le proxy intégré écrase les en-têtes) : ne pas le retirer tant que l'application passe par le proxy.                                                            |
+
+### Les trois modes `HTTPS_MODE`
+
+- **`off` — HTTP pur (défaut).** Le proxy sert l'application en HTTP sur le port 80 : le
+  comportement le plus simple, pour un LAN sans TLS ou un premier essai. Prérequis :
+  aucun. Côté navigateur : aucun avertissement, mais le trafic circule en clair — l'app
+  lit `x-forwarded-proto` et marque donc le cookie de session **non** `secure`.
+- **`self` — certificat de l'autorité interne de Caddy (`tls internal`).** Caddy crée sa
+  propre autorité de certification et émet un certificat pour `APP_DOMAIN` : pour un LAN
+  où le domaine n'est pas publiquement résoluble. Prérequis : aucun (tout est local).
+  Côté navigateur : **avertissement de certificat** tant que le certificat racine interne
+  n'a pas été importé sur les postes (procédure ci-dessous) ; sans import, il faut
+  accepter l'avertissement à chaque visite.
+- **`letsencrypt` — certificat public Let's Encrypt.** Émission **et** renouvellement
+  automatiques, redirection HTTP→HTTPS et en-tête **HSTS** activés. Prérequis :
+  `APP_DOMAIN` doit pointer en DNS vers ce serveur **et** les ports 80 et 443 être
+  joignables depuis Internet. Côté navigateur : cadenas valide, aucune manipulation ;
+  `ACME_EMAIL` (optionnel) reçoit les avis d'expiration.
+
+### Mise en route
+
+```bash
+cp .env.example .env            # renseigner au minimum APP_DOMAIN et HTTPS_MODE
+docker compose up -d --build
+docker compose logs -f proxy    # suivre l'émission du certificat / le démarrage du proxy
+docker compose restart          # après une modification du .env
+docker compose down             # tout arrêter
+```
+
+### Mode `self` : faire confiance au certificat racine interne
+
+Caddy signe les certificats avec une autorité locale que les navigateurs ne connaissent
+pas — d'où l'avertissement. Pour le faire disparaître sur les postes du LAN, exportez la
+racine puis importez-la dans le trousseau de chaque poste :
+
+```bash
+docker compose exec proxy cat /data/caddy/pki/authorities/local/root.crt > learngame-root.crt
+```
+
+Importez ensuite `learngame-root.crt` dans le trousseau du poste (macOS : **Trousseau
+d'accès** → certificats système ; Firefox : **Paramètres** → certificats).
+
+### Variante : l'université fournit déjà un reverse proxy
+
+N'utilisez pas le proxy intégré : démarrez uniquement l'application.
+
+```bash
+docker compose up -d learngame
+```
+
+Le service `learngame` écoute sur `127.0.0.1:3000` (déjà le cas dans le compose) : faites
+pointer le reverse proxy de l'université vers cette adresse. Mettez `TRUST_PROXY=1` dans
+`.env` **uniquement si** ce proxy écrase `x-forwarded-for` (sinon les plafonds par IP
+deviennent des plafonds globaux — cf. section 3). Le TLS et le domaine dépendent alors
+entièrement de ce proxy.
+
+### Rappels
+
+- **L'application n'est jamais exposée publiquement** : seule la porte 80/443 du proxy
+  l'est ; `learngame` reste liée à `127.0.0.1`.
+- HSTS uniquement en mode `letsencrypt`.
+- **SSO** : avec HTTPS activé (`self` ou `letsencrypt`), l'URI de rappel à déclarer auprès
+  de l'université est `https://$APP_DOMAIN/api/auth/oidc/callback` — ou la valeur
+  explicite d'`OIDC_REDIRECT_URI` si vous l'avez fixée.
+
+---
+
+## 8. Dépannage courant
 
 | Symptôme                                                          | Cause et solution                                                                                                                                                                                                                       |
 | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -201,15 +294,17 @@ interne sans TLS) : en HTTPS, remettez la valeur par défaut.
 | « Le SSO de l'université a refusé la connexion » (`oidc_refus_idp`)   | L'IdP a renvoyé une erreur (identification refusée, client mal déclaré…) : les détails sont dans les journaux du serveur. Vérifier côté université la déclaration du client (redirect_uri **identique** à `OIDC_REDIRECT_URI`, PKCE activé).  |
 | « Session de connexion expirée ou déjà utilisée » (`oidc_etat_invalide`) | Le flux SSO dure 10 minutes au maximum et un callback ne se rejoue pas. Reprendre depuis le bouton SSO. Un blocage systématique côté navigateur pointe vers un proxy qui retire les cookies.                                                |
 | SSO : chaque connexion crée un doublon de compte                      | Le rattachement par e-mail exige que l'IdP délivre l'e-mail du compte (claim `email`) et que celui-ci corresponde au compte local (casse ignorée). Vérifier les scopes (`email`) et l'e-mail du compte local.                               |
+| Let's Encrypt n'émet pas de certificat                               | Le DNS de `APP_DOMAIN` ne pointe pas vers ce serveur, ou les ports 80/443 sont bloqués : vérifier `docker compose logs proxy`. En attendant, `HTTPS_MODE=self` donne un TLS utilisable.                                                      |
+| Avertissement navigateur en mode `self`                              | Comportement attendu : le certificat est émis par l'autorité interne de Caddy. Importer le certificat racine (section 7) ou accepter l'avertissement.                                                                                      |
 
 ---
 
-## 8. Arborescence du projet
+## 9. Arborescence du projet
 
 ```
 LearnGame/
 ├── .env.example          # Modèle de configuration (section 3)
-├── docker-compose.yml    # Service unique : build local, volume ./data, env_file .env
+├── docker-compose.yml    # Deux services : learngame (app standalone, 127.0.0.1:3000) + proxy (Caddy, TLS 80/443)
 ├── Dockerfile            # Build standalone (node:24-alpine), utilisateur non root, port 3000
 ├── next.config.ts        # output: "standalone" (build Docker autonome)
 ├── data/                 # Base SQLite (learngame.db) — créée au premier lancement, à sauvegarder

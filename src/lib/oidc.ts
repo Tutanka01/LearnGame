@@ -78,11 +78,19 @@ const env = (name: string): string | undefined => {
 };
 
 export function oidcSettings(): OidcSettings {
+  const declared = declaredOrigin();
+  const httpsDeclared = declared !== undefined && deploymentIsHttps();
   return {
     issuer: env("OIDC_ISSUER") ?? "",
     clientId: env("OIDC_CLIENT_ID") ?? "",
     clientSecret: env("OIDC_CLIENT_SECRET") ?? "",
-    redirectUri: env("OIDC_REDIRECT_URI"),
+    // Override explicite > domaine déclaré en HTTPS par le déploiement
+    // (APP_DOMAIN + HTTPS_MODE=self|certs) > rien (l'URI sera déduite des
+    // en-têtes, avec avertissement). En HTTPS_MODE=off, pas de dérivation :
+    // une URI de rappel http n'est en pratique pas déclarable à l'université,
+    // autant exiger le choix explicite.
+    redirectUri:
+      env("OIDC_REDIRECT_URI") ?? (httpsDeclared ? `${declared}/api/auth/oidc/callback` : undefined),
     scopes: env("OIDC_SCOPES") ?? "openid profile email",
     allowedDomains: (env("OIDC_ALLOWED_DOMAINS") ?? "")
       .split(",")
@@ -98,6 +106,40 @@ export function isOidcEnabled(): boolean {
   return Boolean(s.issuer && s.clientId && s.clientSecret);
 }
 
+/**
+ * Origine déclarée par l'opérateur via le déploiement Docker intégré :
+ * APP_DOMAIN + HTTPS_MODE. Une seule source de vérité pour le domaine : le
+ * proxy Caddy s'en sert comme adresse de site, l'app en déduit les
+ * redirections internes (et l'URI de rappel SSO quand le mode est https).
+ *
+ *   - self | certs → https://APP_DOMAIN ;
+ *   - off          → http://APP_DOMAIN (le protocole est CONNU : autant
+ *     l'utiliser plutôt que l'en-tête Host, forgable par le client) ;
+ *   - APP_DOMAIN absent ou invalide → undefined (repli sur les en-têtes).
+ *
+ * Domaine strictement nu (lettres/chiffres/points/tirets, PAS de port : la
+ * topologie intégrée ne sert que 80/443) — ce qui exclut aussi toute
+ * injection dans la configuration ou les URL générées.
+ */
+export function declaredOrigin(): string | undefined {
+  const domain = process.env.APP_DOMAIN?.trim();
+  const mode = process.env.HTTPS_MODE?.trim();
+  if (!domain) return undefined;
+  // Garde-fou : domaine nu, pas de port ni de caractère exotique ; « localhost »
+  // accepté (tests en LAN), sinon un point est exigé (pas de nom incomplet).
+  if (!/^[a-zA-Z0-9.\-]+$/.test(domain)) return undefined;
+  if (domain !== "localhost" && !domain.includes(".")) return undefined;
+  if (mode === "self" || mode === "certs") return `https://${domain}`;
+  if (mode === "off") return `http://${domain}`;
+  return undefined;
+}
+
+/** Le déploiement déclaré est-il en HTTPS ? (self ou certs) */
+function deploymentIsHttps(): boolean {
+  const mode = process.env.HTTPS_MODE?.trim();
+  return mode === "self" || mode === "certs";
+}
+
 /** URI de rappel pour une origine donnée (si OIDC_REDIRECT_URI n'est pas fixé). */
 export function deriveCallbackUri(origin: string): string {
   return `${origin.replace(/\/+$/, "")}/api/auth/oidc/callback`;
@@ -110,22 +152,36 @@ export function deriveCallbackUri(origin: string): string {
  *
  * `req.url` n'est PAS fiable pour ça : `next start` le réécrit en
  * http://localhost:<port> quel que soit l'hôte servi. Ordre de confiance :
- *   1. OIDC_REDIRECT_URI (recommandé en production — une seule source de vérité) ;
- *   2. x-forwarded-host/proto, si l'opérateur déclare un proxy de confiance
+ *   1. OIDC_REDIRECT_URI (override explicite) ;
+ *   2. APP_DOMAIN + HTTPS_MODE (déploiement Docker intégré : http en off,
+ *      https en self/certs — cf. declaredOrigin) ;
+ *   3. x-forwarded-host/proto, si l'opérateur déclare un proxy de confiance
  *      qui ÉCRASE ces en-têtes (`TRUST_PROXY=1`) — même règle que clientIp() ;
- *   3. l'en-tête `Host` du navigateur (HTTP pur local/LAN : le schéma est
- *      http ; derrière un proxy non déclaré, fixer OIDC_REDIRECT_URI).
+ *   4. l'en-tête `Host` du navigateur (repli : APP_DOMAIN non renseigné).
  */
 export function redirectOrigin(req: Request): string {
+  // 1. Override explicite (avertissement si défini mais inexploitable : un
+  //    diagnostic final « URI non enregistrée à l'IdP » est très loin de la
+  //    vraie cause — une typo dans la variable).
   const configured = process.env.OIDC_REDIRECT_URI?.trim();
   if (configured) {
     try {
       const u = new URL(configured);
       if (u.protocol === "http:" || u.protocol === "https:") return u.origin;
     } catch {
-      /* configuration invalide : on retombe sur les en-têtes */
+      /* ci-dessous */
     }
+    console.warn(
+      `SSO OIDC : OIDC_REDIRECT_URI définie mais inexploitable (« ${configured} ») — attendu une URL complète, ex. https://mon-domaine/api/auth/oidc/callback.`
+    );
   }
+  // 2. Domaine déclaré par le déploiement (APP_DOMAIN + HTTPS_MODE, protocole
+  //    connu — http en off, https en self/certs) : plus fiable que tout
+  //    en-tête.
+  const declared = declaredOrigin();
+  if (declared) return declared;
+  // 3. x-forwarded-host/proto, si l'opérateur déclare un proxy de confiance
+  //    qui ÉCRASE ces en-têtes (`TRUST_PROXY=1`) — même règle que clientIp().
   const trusted = process.env.TRUST_PROXY === "1";
   const host =
     (trusted ? req.headers.get("x-forwarded-host")?.split(",")[0]?.trim() : undefined) ??
@@ -133,8 +189,13 @@ export function redirectOrigin(req: Request): string {
   const proto = trusted
     ? (req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ?? "http")
     : "http";
-  // Strict : un Host exotique (injection, espaces) retombe sur le repli.
-  if (host && /^[a-zA-Z0-9.\-]+(:\d{1,5})?$/.test(host)) {
+  // Strict : un Host exotique (injection, espaces) retombe sur le repli. La
+  // forme [IPv6]:port est acceptée (LAN en IPv6).
+  if (
+    (/^[a-zA-Z0-9.\-]+(:\d{1,5})?$/.test(host ?? "") ||
+      /^\[[0-9a-fA-F:]+\](:\d{1,5})?$/.test(host ?? "")) &&
+    host
+  ) {
     return `${proto}://${host}`;
   }
   try {

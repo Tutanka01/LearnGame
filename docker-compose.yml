@@ -1,9 +1,92 @@
+# Déploiement LearnGame : l'application + un proxy TLS intégré (Caddy).
+#
+# Le domaine et le mode HTTPS se règlent dans .env (APP_DOMAIN, HTTPS_MODE) —
+# documentation complète : docs/guide-demarrage.md « HTTPS et domaine avec Docker ».
+# En HTTPS_MODE=certs, déposer fullchain.pem + privkey.pem dans ./certs/
+# (certificats fournis par le service informatique / l'AC de l'université).
+#
+# Topologie : le proxy est le SEUL point d'entrée public (80/443) ; l'app n'est
+# joignable directement que depuis la machine hôte (127.0.0.1:3000, pour le
+# debug). Variante « l'université fournit déjà un reverse proxy » : démarrer
+# uniquement l'app (`docker compose up -d learngame`) et faire pointer leur
+# proxy vers 127.0.0.1:3000 (même machine).
+
 services:
   learngame:
     build: .
+    environment:
+      # Proxy intégré = Caddy écrase x-forwarded-for : les fenêtres anti-abus
+      # identifient chaque client par sa vraie IP. Défaut 1, surchargeable
+      # depuis .env (variante « proxy universitaire » qui n'écraserait pas
+      # l'en-tête → mettre TRUST_PROXY=0).
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      # Même chaîne de priorité que le proxy (shell > .env > défaut) : les deux
+      # services ne peuvent pas diverger silencieusement sur le domaine.
+      APP_DOMAIN: ${APP_DOMAIN:-localhost}
+      HTTPS_MODE: ${HTTPS_MODE:-off}
+    cap_drop:
+      - ALL # process Node non privilégié, aucun capability nécessaire
+    security_opt:
+      - no-new-privileges:true
+    # Jamais d'exposition publique directe : debug local uniquement.
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     env_file: .env
     volumes:
       - ./data:/app/data
     restart: unless-stopped
+    networks:
+      - interne
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/login || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  proxy:
+    # Version PONCTUELLE : le comportement de reverse_proxy (réécriture des
+    # en-têtes X-Forwarded-*) est le fondement de TRUST_PROXY — ne pas suivre
+    # le tag flottant.
+    image: caddy:2.10-alpine
+    entrypoint: ["/bin/sh", "/docker/caddy-entrypoint.sh"]
+    environment:
+      # Même chaîne de priorité que l'app ci-dessus (shell > .env > défaut).
+      APP_DOMAIN: ${APP_DOMAIN:-localhost}
+      HTTPS_MODE: ${HTTPS_MODE:-off}
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    volumes:
+      - ./docker/caddy-entrypoint.sh:/docker/caddy-entrypoint.sh:ro
+      # Certificats fournis par l'opérateur (HTTPS_MODE=certs) — lecture seule.
+      - ./certs:/certs:ro
+      # Persistance : certificats de l'AC interne (mode self) / état Caddy.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      learngame:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - interne
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  interne:

@@ -24,6 +24,9 @@ import {
   verifyFlowCookie,
   assertIdTokenAlgAllowed,
   OidcLoginError,
+  declaredOrigin,
+  redirectOrigin,
+  oidcSettings,
 } from "../src/lib/oidc";
 import { isSafeLocalPath } from "../src/lib/authValidate";
 import { OIDC_ERROR_CODES, oidcErrorMessage } from "../src/lib/oidcMessages";
@@ -241,6 +244,70 @@ verifie("verifyFlowCookie : binding temps constant state ↔ cookie", () => {
 verifie("deriveCallbackUri : suffixe propre même avec slash final", () => {
   attendu(deriveCallbackUri("https://app.test") === REDIRECT_URI, "origine nue");
   attendu(deriveCallbackUri("https://app.test/") === REDIRECT_URI, "slash final retiré");
+});
+
+verifie("APP_DOMAIN + HTTPS_MODE : origine déclarée du déploiement Docker", () => {
+  delete process.env.OIDC_REDIRECT_URI;
+  delete process.env.TRUST_PROXY;
+  const req = { headers: new Headers({ host: "autre.test" }) } as unknown as Request;
+
+  // off : le protocole est connu (http) → l'origine déclarée prime sur
+  // l'en-tête Host (forgable par le client). L'URI de rappel SSO n'est PAS
+  // dérivée (une URI http n'est en pratique pas déclarable à l'université).
+  process.env.APP_DOMAIN = "learngame.univ-pau.fr";
+  process.env.HTTPS_MODE = "off";
+  attendu(declaredOrigin() === "http://learngame.univ-pau.fr", "off → http://domaine");
+  attendu(oidcSettings().redirectUri === undefined, "pas d'URI de rappel dérivée en off");
+  attendu(redirectOrigin(req) === "http://learngame.univ-pau.fr", "origine déclarée > Host forgable");
+
+  // self et certs → https://APP_DOMAIN, URI de rappel dérivée.
+  process.env.HTTPS_MODE = "self";
+  attendu(declaredOrigin() === "https://learngame.univ-pau.fr", "self → https://domaine");
+  process.env.HTTPS_MODE = "certs";
+  attendu(declaredOrigin() === "https://learngame.univ-pau.fr", "certs → https://domaine");
+  attendu(
+    oidcSettings().redirectUri === "https://learngame.univ-pau.fr/api/auth/oidc/callback",
+    "URI de rappel dérivée du domaine déclaré"
+  );
+  attendu(
+    redirectOrigin(req) === "https://learngame.univ-pau.fr",
+    "origine déclarée prioritaire sur les en-têtes"
+  );
+
+  // L'override explicite OIDC_REDIRECT_URI gagne sur la dérivation.
+  process.env.OIDC_REDIRECT_URI = "https://app-de-test.univ-pau.fr/cb";
+  attendu(redirectOrigin(req) === "https://app-de-test.univ-pau.fr", "override > APP_DOMAIN");
+  attendu(oidcSettings().redirectUri === "https://app-de-test.univ-pau.fr/cb", "override > dérivation");
+  delete process.env.OIDC_REDIRECT_URI;
+
+  // Domaine invalide (chemin, port, nom incomplet) → ignoré, repli en-têtes.
+  for (const invalide of ["foo/bar", "host:8443", "a b.fr"]) {
+    process.env.APP_DOMAIN = invalide;
+    attendu(declaredOrigin() === undefined, `domaine invalide ignoré (« ${invalide} »)`);
+  }
+  attendu(redirectOrigin(req) === "http://autre.test", "repli sur Host si domaine invalide");
+
+  // « localhost » est valide (tests en LAN), aligné sur le garde-fou du proxy.
+  process.env.APP_DOMAIN = "localhost";
+  process.env.HTTPS_MODE = "self";
+  attendu(declaredOrigin() === "https://localhost", "localhost accepté");
+
+  // Sans déploiement déclaré : TRUST_PROXY → x-forwarded-* (règle clientIp).
+  delete process.env.APP_DOMAIN;
+  process.env.HTTPS_MODE = "off";
+  process.env.TRUST_PROXY = "1";
+  const reqProxy = {
+    headers: new Headers({
+      "x-forwarded-host": "public.univ-pau.fr",
+      "x-forwarded-proto": "https",
+    }),
+  } as unknown as Request;
+  attendu(redirectOrigin(reqProxy) === "https://public.univ-pau.fr", "TRUST_PROXY → x-forwarded-*");
+  // Repli IPv6 littéral accepté (LAN en IPv6).
+  const reqV6 = { headers: new Headers({ host: "[fd42::5]:3000" }) } as unknown as Request;
+  attendu(redirectOrigin(reqV6) === "http://[fd42::5]:3000", "hôte IPv6 accepté");
+  delete process.env.TRUST_PROXY;
+  delete process.env.HTTPS_MODE;
 });
 
 verifie("beginOidcLogin : URL d'autorisation complète (PKCE S256, state, nonce)", async () => {
